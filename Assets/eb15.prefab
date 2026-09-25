@@ -7957,13 +7957,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RoboArm.RosRoboArmBridge
   listenPort: 5005
-  rosHost: 127.0.0.1
+  rosHost: 192.168.1.54
   rosPort: 5006
   enableRosControl: 1
   autoPauseDemoOnRosData: 1
   smoothMotion: 1
   smoothSpeed: 25
-  streamCommandsToRos: 0
+  streamCommandsToRos: 1
   armController: {fileID: 0}
   isConnected: 0
   packetsPerSecond: 0

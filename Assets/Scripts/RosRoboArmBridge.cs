@@ -21,13 +21,14 @@ namespace RoboArm
         private const string PREF_HOST = "EB15_RosHost";
         private const string PREF_IN_PORT = "EB15_ListenPort";
         private const string PREF_OUT_PORT = "EB15_RosPort";
+        private const string PREF_AUTO_STREAM = "EB15_AutoStream";
 
         [Header("ROS 2 Network Configuration")]
         [Tooltip("Port on which Unity listens for incoming ROS 2 joint states (UDP).")]
         public int listenPort = 5005;
 
         [Tooltip("ROS 2 machine IP address for sending commands back.")]
-        public string rosHost = "127.0.0.1";
+        public string rosHost = "192.168.1.54";
 
         [Tooltip("ROS 2 port for incoming joint commands from Unity (UDP).")]
         public int rosPort = 5006;
@@ -44,6 +45,7 @@ namespace RoboArm
         [SerializeField] private bool isReceivingRealEncoders = false;
         [SerializeField] private float packetsPerSecond = 0f;
         [SerializeField] private int totalPacketsReceived = 0;
+        [SerializeField] private int totalPacketsSent = 0;
         [SerializeField] private string lastPacketTimestamp = "Never";
         public bool showHUD = false; // Managed by Master Dashboard
 
@@ -52,6 +54,7 @@ namespace RoboArm
         public bool IsReceivingRealEncoders => isReceivingRealEncoders;
         public float PacketsPerSecond => packetsPerSecond;
         public int TotalPacketsReceived => totalPacketsReceived;
+        public int TotalPacketsSent => totalPacketsSent;
         public string LastPacketTimestamp => lastPacketTimestamp;
 
         // Data packet structure matching unity_bridge_node.py
@@ -88,10 +91,23 @@ namespace RoboArm
                 armController = GetComponent<ArmSimulationController>();
             }
 
-            // Load saved network preferences
+            // Load saved network preferences (defaults to 192.168.1.54 if unset)
             rosHost = PlayerPrefs.GetString(PREF_HOST, rosHost);
-            listenPort = PlayerPrefs.GetInt(PREF_IN_PORT, listenPort);
-            rosPort = PlayerPrefs.GetInt(PREF_OUT_PORT, rosPort);
+            if (string.IsNullOrEmpty(rosHost) || rosHost == "127.0.0.1")
+            {
+                rosHost = "192.168.1.54";
+            }
+            listenPort = PlayerPrefs.GetInt(PREF_IN_PORT, listenPort > 0 ? listenPort : 5005);
+            rosPort = PlayerPrefs.GetInt(PREF_OUT_PORT, rosPort > 0 ? rosPort : 5006);
+            streamCommandsToRos = PlayerPrefs.GetInt(PREF_AUTO_STREAM, 1) == 1;
+        }
+
+        public void SetAutoStream(bool enable)
+        {
+            streamCommandsToRos = enable;
+            PlayerPrefs.SetInt(PREF_AUTO_STREAM, enable ? 1 : 0);
+            PlayerPrefs.Save();
+            Debug.Log($"[RosRoboArmBridge] Auto-Stream set to: {enable}");
         }
 
         void OnEnable()
@@ -126,6 +142,7 @@ namespace RoboArm
             PlayerPrefs.SetString(PREF_HOST, rosHost);
             PlayerPrefs.SetInt(PREF_IN_PORT, listenPort);
             PlayerPrefs.SetInt(PREF_OUT_PORT, rosPort);
+            PlayerPrefs.SetInt(PREF_AUTO_STREAM, streamCommandsToRos ? 1 : 0);
             PlayerPrefs.Save();
 
             StartBridge();
@@ -300,10 +317,15 @@ namespace RoboArm
         /// </summary>
         public void SendTargetPoseToRos(float j1Deg, float j2Deg, float j3Deg, float wristDeg, float gripNorm)
         {
-            if (udpSender == null || string.IsNullOrEmpty(rosHost)) return;
+            if (string.IsNullOrEmpty(rosHost)) return;
 
             try
             {
+                if (udpSender == null)
+                {
+                    udpSender = new UdpClient();
+                }
+
                 // Convert Unity degrees to ROS radians
                 var pkt = new RosJointPacket
                 {
@@ -319,6 +341,7 @@ namespace RoboArm
                 string json = JsonUtility.ToJson(pkt);
                 byte[] bytes = Encoding.UTF8.GetBytes(json);
                 udpSender.Send(bytes, bytes.Length, rosHost, rosPort);
+                totalPacketsSent++;
             }
             catch (Exception ex)
             {

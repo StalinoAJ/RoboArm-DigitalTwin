@@ -65,7 +65,7 @@ namespace RoboArm
         private int selectedSidebarTab = 0; // 0: Controls, 1: Network, 2: Presets, 3: Guide
 
         // Network inputs
-        private string inputRosHost = "127.0.0.1";
+        private string inputRosHost = "192.168.1.54";
         private string inputListenPort = "5005";
         private string inputRosPort = "5006";
         private string networkStatusMsg = "";
@@ -130,6 +130,7 @@ namespace RoboArm
         private GUIStyle styleValueLabel;
         private GUIStyle styleCheckLabel;
         private GUIStyle styleCheckIcon;
+        private GUIStyle styleCheckIconOff;
         private GUIStyle styleBtnReset;
         private GUIStyle styleBtnClose;
         private GUIStyle styleBtnApply;
@@ -247,16 +248,16 @@ namespace RoboArm
             }
 
             // Continuous Real-Time Streaming: Stream target ghost pose to real robot when Auto-Stream is enabled
-            if (rosBridge != null && rosBridge.streamCommandsToRos && !autoDemo)
+            if (rosBridge != null && rosBridge.streamCommandsToRos)
             {
                 streamTimer += Time.deltaTime;
-                bool poseChanged = Mathf.Abs(targetJoint1 - lastStreamedJ1) > 0.1f ||
-                                   Mathf.Abs(targetJoint2 - lastStreamedJ2) > 0.1f ||
-                                   Mathf.Abs(targetJoint3 - lastStreamedJ3) > 0.1f ||
-                                   Mathf.Abs(targetWrist - lastStreamedWrist) > 0.1f ||
+                bool poseChanged = Mathf.Abs(targetJoint1 - lastStreamedJ1) > 0.05f ||
+                                   Mathf.Abs(targetJoint2 - lastStreamedJ2) > 0.05f ||
+                                   Mathf.Abs(targetJoint3 - lastStreamedJ3) > 0.05f ||
+                                   Mathf.Abs(targetWrist - lastStreamedWrist) > 0.05f ||
                                    Mathf.Abs(targetGripper - lastStreamedGrip) > 0.005f;
 
-                // Stream at 25 Hz when dragging sliders, or 2 Hz heartbeat to maintain latched pose
+                // Stream at 25 Hz when dragging sliders or moving in demo, or 2 Hz heartbeat to maintain latched pose
                 if ((poseChanged && streamTimer >= 0.04f) || streamTimer >= 0.5f)
                 {
                     rosBridge.SendTargetPoseToRos(targetJoint1, targetJoint2, targetJoint3, targetWrist, targetGripper);
@@ -578,11 +579,18 @@ namespace RoboArm
             styleCheckLabel.alignment = TextAnchor.MiddleLeft;
             styleCheckLabel.wordWrap = true;
 
-            styleCheckIcon = new GUIStyle(GUI.skin.label);
-            styleCheckIcon.fontSize = 13;
+            styleCheckIcon = new GUIStyle(GUI.skin.button);
+            styleCheckIcon.normal.background = texCheckmarkOn;
+            styleCheckIcon.border = new RectOffset(4, 4, 4, 4);
+            styleCheckIcon.fontSize = 12;
             styleCheckIcon.fontStyle = FontStyle.Bold;
             styleCheckIcon.normal.textColor = Color.white;
             styleCheckIcon.alignment = TextAnchor.MiddleCenter;
+
+            styleCheckIconOff = new GUIStyle(GUI.skin.button);
+            styleCheckIconOff.normal.background = texCheckmarkOff;
+            styleCheckIconOff.border = new RectOffset(4, 4, 4, 4);
+            styleCheckIconOff.alignment = TextAnchor.MiddleCenter;
 
             styleBtnReset = new GUIStyle(GUI.skin.button);
             styleBtnReset.normal.background = texBtnReset;
@@ -751,16 +759,14 @@ namespace RoboArm
 
             if (GUI.Button(new Rect(rightEdge - btnW, btnY, btnW, 30), "SAVE", styleBtnSave))
             {
-                SnapGhostToPhysicalPose();
                 if (rosBridge != null)
                 {
-                    if (inputRosHost != rosBridge.rosHost)
-                    {
-                        int.TryParse(inputListenPort, out int inP);
-                        int.TryParse(inputRosPort, out int outP);
-                        rosBridge.Reconnect(inputRosHost, inP > 0 ? inP : 5005, outP > 0 ? outP : 5006);
-                    }
+                    int.TryParse(inputListenPort, out int inP);
+                    int.TryParse(inputRosPort, out int outP);
+                    rosBridge.Reconnect(inputRosHost, inP > 0 ? inP : 5005, outP > 0 ? outP : 5006);
+                    rosBridge.SetAutoStream(true);
                     rosBridge.SendTargetPoseToRos(targetJoint1, targetJoint2, targetJoint3, targetWrist, targetGripper);
+                    Debug.Log($"[EB-15 Control] SAVE: Settings and Target Pose streamed to {inputRosHost}:{outP}.");
                 }
             }
         }
@@ -784,6 +790,27 @@ namespace RoboArm
             // ==========================================
             GUILayout.BeginVertical(GUILayout.Width(colW));
             DrawColumnHeader("Joint Targets");
+
+            // Live Teleoperation Streaming Pill
+            if (rosBridge != null && rosBridge.streamCommandsToRos)
+            {
+                GUI.color = new Color(0.2f, 0.95f, 0.65f, 1f);
+                if (GUILayout.Button($"● LIVE TO ROBOT ({rosBridge.TotalPacketsSent} sent)", styleCardPill, GUILayout.Height(26)))
+                {
+                    rosBridge.SetAutoStream(false);
+                }
+                GUI.color = Color.white;
+            }
+            else
+            {
+                GUI.color = new Color(1f, 0.65f, 0.2f, 1f);
+                if (GUILayout.Button("⏸️ STREAM OFF (Click to Enable)", styleCardPill, GUILayout.Height(26)))
+                {
+                    if (rosBridge != null) rosBridge.SetAutoStream(true);
+                }
+                GUI.color = Color.white;
+            }
+            GUILayout.Space(6);
 
             DrawStyledSlider("Joint 1 (Base)", ref targetJoint1, -180f, 180f, "°");
             DrawStyledSlider("Joint 2 (Shoulder)", ref targetJoint2, -90f, 90f, "°");
@@ -829,7 +856,11 @@ namespace RoboArm
 
             if (rosBridge != null)
             {
-                rosBridge.streamCommandsToRos = DrawStyledCheckbox("Auto-Stream to Real Robot", rosBridge.streamCommandsToRos);
+                bool nextStream = DrawStyledCheckbox("Auto-Stream to Real Robot", rosBridge.streamCommandsToRos);
+                if (nextStream != rosBridge.streamCommandsToRos)
+                {
+                    rosBridge.SetAutoStream(nextStream);
+                }
             }
 
             autoDemo = DrawStyledCheckbox("Waypoint Demo Active", autoDemo);
@@ -888,24 +919,13 @@ namespace RoboArm
         private bool DrawStyledCheckbox(string label, bool current)
         {
             GUILayout.BeginHorizontal();
-            Rect boxRect = GUILayoutUtility.GetRect(20, 20, GUILayout.Width(20), GUILayout.Height(20));
-            GUI.DrawTexture(boxRect, current ? texCheckmarkOn : texCheckmarkOff);
-            if (current)
-            {
-                GUI.Label(boxRect, "✔", styleCheckIcon);
-            }
+            bool boxClicked = GUILayout.Button(current ? "✔" : "", current ? styleCheckIcon : styleCheckIconOff, GUILayout.Width(22), GUILayout.Height(22));
             GUILayout.Space(8);
-            bool clicked = GUILayout.Button(label, styleCheckLabel);
+            bool labelClicked = GUILayout.Button(label, styleCheckLabel);
             GUILayout.EndHorizontal();
             GUILayout.Space(6);
 
-            if (Event.current.type == EventType.MouseDown && boxRect.Contains(Event.current.mousePosition))
-            {
-                clicked = true;
-                Event.current.Use();
-            }
-
-            return clicked ? !current : current;
+            return (boxClicked || labelClicked) ? !current : current;
         }
 
         private void DrawModernNetworkTab(float totalW)
@@ -974,8 +994,9 @@ namespace RoboArm
             if (rosBridge != null)
             {
                 DrawReadoutCard("Status", rosBridge.IsConnected ? "Connected" : "Listening", "");
-                DrawReadoutCard("Rate", $"{rosBridge.PacketsPerSecond:F1} Hz", "");
-                DrawReadoutCard("Packets", $"{rosBridge.TotalPacketsReceived}", "");
+                DrawReadoutCard("In Rate", $"{rosBridge.PacketsPerSecond:F1} Hz", "");
+                DrawReadoutCard("In Packets", $"{rosBridge.TotalPacketsReceived}", "");
+                DrawReadoutCard("Out Sent", $"{rosBridge.TotalPacketsSent}", "");
                 DrawReadoutCard("Encoders", rosBridge.IsReceivingRealEncoders ? "Active" : "Awaiting", "");
                 string lastTime = rosBridge.LastPacketTimestamp;
                 if (!string.IsNullOrEmpty(lastTime) && lastTime.Contains(".") && lastTime.Length > 8)
