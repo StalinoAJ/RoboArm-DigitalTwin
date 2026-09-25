@@ -1086,7 +1086,7 @@ namespace RoboArm
             DrawColumnHeader("Remote ROS 2 Driver");
             GUILayout.Label("Run on Linux PC / Robot host:", styleSubtext);
             GUILayout.Space(4);
-            GUILayout.Label("ros2 launch eb15_driver hardware_control.launch.py\nunity_ip:=<THIS_PC_IP>", styleCodeBox, GUILayout.Width(colW));
+            GUILayout.Label("ros2 launch eb15_driver hardware_control.launch.py\nunity_ip:=<THIS_PC_IP> gui:=false feedback:=true", styleCodeBox, GUILayout.Width(colW));
             GUILayout.EndVertical();
 
             GUILayout.Space(24);
