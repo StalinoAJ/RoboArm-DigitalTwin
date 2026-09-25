@@ -70,6 +70,14 @@ namespace RoboArm
         private string inputRosPort = "5006";
         private string networkStatusMsg = "";
 
+        // Real-time teleoperation streaming
+        private float streamTimer = 0f;
+        private float lastStreamedJ1 = 9999f;
+        private float lastStreamedJ2 = 9999f;
+        private float lastStreamedJ3 = 9999f;
+        private float lastStreamedWrist = 9999f;
+        private float lastStreamedGrip = 9999f;
+
         [System.Serializable]
         public struct Waypoint
         {
@@ -230,6 +238,35 @@ namespace RoboArm
             if (ghostArm != null)
             {
                 ghostArm.SetPose(targetJoint1, targetJoint2, targetJoint3, targetWrist, targetGripper);
+            }
+
+            // Sync UI input field with bridge host if bridge auto-detected or updated
+            if (rosBridge != null && !string.IsNullOrEmpty(rosBridge.rosHost) && rosBridge.rosHost != "127.0.0.1" && inputRosHost == "127.0.0.1")
+            {
+                inputRosHost = rosBridge.rosHost;
+            }
+
+            // Continuous Real-Time Streaming: Stream target ghost pose to real robot when Auto-Stream is enabled
+            if (rosBridge != null && rosBridge.streamCommandsToRos && !autoDemo)
+            {
+                streamTimer += Time.deltaTime;
+                bool poseChanged = Mathf.Abs(targetJoint1 - lastStreamedJ1) > 0.1f ||
+                                   Mathf.Abs(targetJoint2 - lastStreamedJ2) > 0.1f ||
+                                   Mathf.Abs(targetJoint3 - lastStreamedJ3) > 0.1f ||
+                                   Mathf.Abs(targetWrist - lastStreamedWrist) > 0.1f ||
+                                   Mathf.Abs(targetGripper - lastStreamedGrip) > 0.005f;
+
+                // Stream at 25 Hz when dragging sliders, or 2 Hz heartbeat to maintain latched pose
+                if ((poseChanged && streamTimer >= 0.04f) || streamTimer >= 0.5f)
+                {
+                    rosBridge.SendTargetPoseToRos(targetJoint1, targetJoint2, targetJoint3, targetWrist, targetGripper);
+                    lastStreamedJ1 = targetJoint1;
+                    lastStreamedJ2 = targetJoint2;
+                    lastStreamedJ3 = targetJoint3;
+                    lastStreamedWrist = targetWrist;
+                    lastStreamedGrip = targetGripper;
+                    streamTimer = 0f;
+                }
             }
 
             // Solid Arm (Physical Twin) tracking
@@ -702,6 +739,12 @@ namespace RoboArm
             {
                 if (rosBridge != null)
                 {
+                    if (inputRosHost != rosBridge.rosHost)
+                    {
+                        int.TryParse(inputListenPort, out int inP);
+                        int.TryParse(inputRosPort, out int outP);
+                        rosBridge.Reconnect(inputRosHost, inP > 0 ? inP : 5005, outP > 0 ? outP : 5006);
+                    }
                     rosBridge.SendTargetPoseToRos(targetJoint1, targetJoint2, targetJoint3, targetWrist, targetGripper);
                 }
             }
@@ -711,6 +754,12 @@ namespace RoboArm
                 SnapGhostToPhysicalPose();
                 if (rosBridge != null)
                 {
+                    if (inputRosHost != rosBridge.rosHost)
+                    {
+                        int.TryParse(inputListenPort, out int inP);
+                        int.TryParse(inputRosPort, out int outP);
+                        rosBridge.Reconnect(inputRosHost, inP > 0 ? inP : 5005, outP > 0 ? outP : 5006);
+                    }
                     rosBridge.SendTargetPoseToRos(targetJoint1, targetJoint2, targetJoint3, targetWrist, targetGripper);
                 }
             }

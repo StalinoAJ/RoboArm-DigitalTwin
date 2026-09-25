@@ -207,6 +207,22 @@ namespace RoboArm
                                 latestPacket = packet;
                                 hasNewPacket = true;
                                 packetCounter++;
+
+                                // Auto-route outbound commands back to sender if rosHost was default localhost
+                                if (remoteEndPoint != null && remoteEndPoint.Address != null)
+                                {
+                                    string senderIp = remoteEndPoint.Address.ToString();
+                                    if (!string.IsNullOrEmpty(senderIp) && senderIp != "127.0.0.1" && senderIp != "0.0.0.0")
+                                    {
+                                        if (rosHost == "127.0.0.1" || rosHost == "localhost" || string.IsNullOrEmpty(rosHost))
+                                        {
+                                            rosHost = senderIp;
+                                            PlayerPrefs.SetString(PREF_HOST, rosHost);
+                                            PlayerPrefs.Save();
+                                            Debug.Log($"[RosRoboArmBridge] Auto-detected physical robot controller at {rosHost}. Routing commands to {rosHost}:{rosPort}");
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
