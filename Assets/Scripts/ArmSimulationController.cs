@@ -116,6 +116,8 @@ namespace RoboArm
         private GUIStyle styleSectionHeader;
         private GUIStyle styleDivider;
         private GUIStyle styleSubtext;
+        private GUIStyle styleBodyText;
+        private GUIStyle styleCodeBox;
         private GUIStyle styleCardPill;
         private GUIStyle styleValueLabel;
         private GUIStyle styleCheckLabel;
@@ -169,6 +171,11 @@ namespace RoboArm
                 inputListenPort = rosBridge.listenPort.ToString();
                 inputRosPort = rosBridge.rosPort.ToString();
             }
+        }
+
+        void OnEnable()
+        {
+            stylesReady = false;
         }
 
         public void FindJoints()
@@ -435,7 +442,7 @@ namespace RoboArm
 
         private void InitModernStyles()
         {
-            if (stylesReady) return;
+            if (stylesReady && styleBodyText != null && styleCodeBox != null && texSidebar != null) return;
 
             // Semi-transparent frosted textures with 9-slice support
             // Left sidebar: Dark translucent obsidian (rgba: 14, 18, 24, 0.90), rounded left corners only
@@ -461,39 +468,58 @@ namespace RoboArm
             texBtnSave = CreateRoundedRectTexture(32, 32, 8, new Color(0.14f, 0.36f, 0.76f, 0.98f));
 
             // GUIStyles with 9-slice borders
-            styleSidebar = new GUIStyle();
+            styleSidebar = new GUIStyle(GUI.skin.box);
             styleSidebar.normal.background = texSidebar;
             styleSidebar.border = new RectOffset(16, 0, 16, 16);
 
-            styleMainPanel = new GUIStyle();
+            styleMainPanel = new GUIStyle(GUI.skin.box);
             styleMainPanel.normal.background = texMainPanel;
             styleMainPanel.border = new RectOffset(0, 16, 16, 16);
 
-            styleDivider = new GUIStyle();
+            styleDivider = new GUIStyle(GUI.skin.box);
             styleDivider.normal.background = texDivider;
 
-            styleTabActive = new GUIStyle();
+            styleTabActive = new GUIStyle(GUI.skin.label);
             styleTabActive.fontSize = 15;
             styleTabActive.fontStyle = FontStyle.Bold;
             styleTabActive.normal.textColor = Color.white;
             styleTabActive.alignment = TextAnchor.MiddleLeft;
 
-            styleTabInactive = new GUIStyle();
+            styleTabInactive = new GUIStyle(GUI.skin.label);
             styleTabInactive.fontSize = 14;
             styleTabInactive.normal.textColor = new Color(0.55f, 0.62f, 0.72f);
             styleTabInactive.alignment = TextAnchor.MiddleLeft;
 
-            styleSectionHeader = new GUIStyle();
-            styleSectionHeader.fontSize = 16;
+            styleSectionHeader = new GUIStyle(GUI.skin.label);
+            styleSectionHeader.fontSize = 15;
             styleSectionHeader.fontStyle = FontStyle.Bold;
             styleSectionHeader.normal.textColor = new Color(0.12f, 0.16f, 0.22f);
 
-            styleSubtext = new GUIStyle();
+            styleSubtext = new GUIStyle(GUI.skin.label);
             styleSubtext.fontSize = 11;
             styleSubtext.fontStyle = FontStyle.Bold;
             styleSubtext.normal.textColor = new Color(0.25f, 0.31f, 0.39f);
+            styleSubtext.alignment = TextAnchor.MiddleLeft;
+            styleSubtext.wordWrap = true;
 
-            styleCardPill = new GUIStyle();
+            styleBodyText = new GUIStyle(GUI.skin.label);
+            styleBodyText.fontSize = 11;
+            styleBodyText.normal.textColor = new Color(0.20f, 0.25f, 0.33f);
+            styleBodyText.alignment = TextAnchor.UpperLeft;
+            styleBodyText.wordWrap = true;
+            styleBodyText.richText = true;
+
+            styleCodeBox = new GUIStyle(GUI.skin.box);
+            styleCodeBox.normal.background = texDropdownPill;
+            styleCodeBox.border = new RectOffset(8, 8, 8, 8);
+            styleCodeBox.fontSize = 10;
+            styleCodeBox.fontStyle = FontStyle.Bold;
+            styleCodeBox.normal.textColor = new Color(0.92f, 0.96f, 1.0f);
+            styleCodeBox.alignment = TextAnchor.MiddleLeft;
+            styleCodeBox.wordWrap = true;
+            styleCodeBox.padding = new RectOffset(10, 10, 8, 8);
+
+            styleCardPill = new GUIStyle(GUI.skin.box);
             styleCardPill.normal.background = texDropdownPill;
             styleCardPill.border = new RectOffset(8, 8, 8, 8);
             styleCardPill.fontSize = 11;
@@ -501,25 +527,27 @@ namespace RoboArm
             styleCardPill.normal.textColor = Color.white;
             styleCardPill.alignment = TextAnchor.MiddleCenter;
 
-            styleValueLabel = new GUIStyle();
+            styleValueLabel = new GUIStyle(GUI.skin.label);
             styleValueLabel.fontSize = 11;
             styleValueLabel.fontStyle = FontStyle.Bold;
             styleValueLabel.normal.textColor = new Color(0.12f, 0.16f, 0.22f);
             styleValueLabel.alignment = TextAnchor.MiddleRight;
+            styleValueLabel.clipping = TextClipping.Overflow;
 
-            styleCheckLabel = new GUIStyle();
+            styleCheckLabel = new GUIStyle(GUI.skin.label);
             styleCheckLabel.fontSize = 11;
             styleCheckLabel.fontStyle = FontStyle.Bold;
             styleCheckLabel.normal.textColor = new Color(0.16f, 0.22f, 0.30f);
             styleCheckLabel.alignment = TextAnchor.MiddleLeft;
+            styleCheckLabel.wordWrap = true;
 
-            styleCheckIcon = new GUIStyle();
+            styleCheckIcon = new GUIStyle(GUI.skin.label);
             styleCheckIcon.fontSize = 13;
             styleCheckIcon.fontStyle = FontStyle.Bold;
             styleCheckIcon.normal.textColor = Color.white;
             styleCheckIcon.alignment = TextAnchor.MiddleCenter;
 
-            styleBtnReset = new GUIStyle();
+            styleBtnReset = new GUIStyle(GUI.skin.button);
             styleBtnReset.normal.background = texBtnReset;
             styleBtnReset.border = new RectOffset(8, 8, 8, 8);
             styleBtnReset.fontSize = 11;
@@ -527,7 +555,7 @@ namespace RoboArm
             styleBtnReset.normal.textColor = Color.white;
             styleBtnReset.alignment = TextAnchor.MiddleCenter;
 
-            styleBtnClose = new GUIStyle();
+            styleBtnClose = new GUIStyle(GUI.skin.button);
             styleBtnClose.normal.background = texBtnClose;
             styleBtnClose.border = new RectOffset(8, 8, 8, 8);
             styleBtnClose.fontSize = 11;
@@ -535,7 +563,7 @@ namespace RoboArm
             styleBtnClose.normal.textColor = Color.white;
             styleBtnClose.alignment = TextAnchor.MiddleCenter;
 
-            styleBtnApply = new GUIStyle();
+            styleBtnApply = new GUIStyle(GUI.skin.button);
             styleBtnApply.normal.background = texBtnApply;
             styleBtnApply.border = new RectOffset(8, 8, 8, 8);
             styleBtnApply.fontSize = 11;
@@ -543,7 +571,7 @@ namespace RoboArm
             styleBtnApply.normal.textColor = Color.white;
             styleBtnApply.alignment = TextAnchor.MiddleCenter;
 
-            styleBtnSave = new GUIStyle();
+            styleBtnSave = new GUIStyle(GUI.skin.button);
             styleBtnSave.normal.background = texBtnSave;
             styleBtnSave.border = new RectOffset(8, 8, 8, 8);
             styleBtnSave.fontSize = 11;
@@ -580,8 +608,10 @@ namespace RoboArm
             }
 
             // Docked in top-left corner so robot remains completely visible in the center/right
-            float panelW = Mathf.Clamp(Screen.width * 0.48f, 750f, 820f);
-            float panelH = Mathf.Clamp(Screen.height * 0.74f, 430f, 510f);
+            float panelW = Mathf.Clamp(Screen.width * 0.48f, 760f, 850f);
+            float panelH = Mathf.Clamp(Screen.height * 0.74f, 440f, 510f);
+            if (panelW > Screen.width - 44f) panelW = Screen.width - 44f;
+            if (panelH > Screen.height - 44f) panelH = Screen.height - 44f;
             float panelX = 22f;
             float panelY = 22f;
 
@@ -791,16 +821,17 @@ namespace RoboArm
         private void DrawReadoutCard(string title, string value, string lagText)
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label(title, styleSubtext);
+            GUILayout.Label(title, styleSubtext, GUILayout.Width(58));
             GUILayout.FlexibleSpace();
             if (!string.IsNullOrEmpty(lagText))
             {
                 GUI.color = new Color(0.18f, 0.46f, 0.88f);
                 GUILayout.Label(lagText, styleSubtext);
                 GUI.color = Color.white;
-                GUILayout.Space(8);
+                GUILayout.Space(4);
             }
             GUILayout.Label(value, styleValueLabel);
+            GUILayout.Space(12);
             GUILayout.EndHorizontal();
             GUILayout.Space(4);
         }
@@ -830,45 +861,45 @@ namespace RoboArm
 
         private void DrawModernNetworkTab(float totalW)
         {
-            float colW = (totalW - 30f) / 3f;
+            float colW = (totalW - 24f) / 3f;
 
             GUILayout.BeginHorizontal();
 
             // Column 1: Remote Host IP
             GUILayout.BeginVertical(GUILayout.Width(colW));
             DrawColumnHeader("ROS 2 Remote Host");
-            GUILayout.Label("Linux PC / Robot IP Address:", styleSubtext);
+            GUILayout.Label("Robot Host IP Address:", styleSubtext);
             inputRosHost = GUILayout.TextField(inputRosHost, GUILayout.Height(28));
 
-            GUILayout.Space(10);
-            GUILayout.Label("Quick IP Presets", styleSubtext);
-            if (GUILayout.Button("Localhost (127.0.0.1)", styleCardPill, GUILayout.Height(28))) inputRosHost = "127.0.0.1";
+            GUILayout.Space(8);
+            GUILayout.Label("Quick IP Presets:", styleSubtext);
+            if (GUILayout.Button("Localhost (127.0.0.1)", styleCardPill, GUILayout.Height(26))) inputRosHost = "127.0.0.1";
             GUILayout.Space(4);
-            if (GUILayout.Button("WSL2 (127.0.0.1)", styleCardPill, GUILayout.Height(28))) inputRosHost = "127.0.0.1";
+            if (GUILayout.Button("WSL2 (127.0.0.1)", styleCardPill, GUILayout.Height(26))) inputRosHost = "127.0.0.1";
             GUILayout.EndVertical();
 
-            GUILayout.Space(15);
+            GUILayout.Space(12);
 
             // Column 2: Ports
             GUILayout.BeginVertical(GUILayout.Width(colW));
-            DrawColumnHeader("UDP Socket Ports");
+            DrawColumnHeader("UDP Ports");
 
-            GUILayout.Label("Incoming Telemetry Port (Unity Listen):", styleSubtext);
+            GUILayout.Label("Listen Port (Telemetry):", styleSubtext);
             inputListenPort = GUILayout.TextField(inputListenPort, GUILayout.Height(28));
 
-            GUILayout.Space(8);
-            GUILayout.Label("Outgoing Command Port (ROS Listen):", styleSubtext);
+            GUILayout.Space(6);
+            GUILayout.Label("Command Port (ROS):", styleSubtext);
             inputRosPort = GUILayout.TextField(inputRosPort, GUILayout.Height(28));
 
-            GUILayout.Space(12);
-            if (GUILayout.Button("🔄 Reconnect Sockets", styleBtnApply, GUILayout.Height(34)))
+            GUILayout.Space(8);
+            if (GUILayout.Button("🔄 Reconnect", styleBtnApply, GUILayout.Height(30)))
             {
                 if (int.TryParse(inputListenPort, out int inP) && int.TryParse(inputRosPort, out int outP))
                 {
                     if (rosBridge != null)
                     {
                         rosBridge.Reconnect(inputRosHost, inP, outP);
-                        networkStatusMsg = $"✓ Connected to {inputRosHost}:{outP}";
+                        networkStatusMsg = $"✓ Connected to\n{inputRosHost}:{outP}";
                     }
                 }
                 else
@@ -880,24 +911,29 @@ namespace RoboArm
             if (!string.IsNullOrEmpty(networkStatusMsg))
             {
                 GUILayout.Space(4);
-                GUILayout.Label(networkStatusMsg, styleSubtext);
+                GUILayout.Label(networkStatusMsg, styleSubtext, GUILayout.Width(colW));
             }
 
             GUILayout.EndVertical();
 
-            GUILayout.Space(15);
+            GUILayout.Space(12);
 
             // Column 3: Live Diagnostics
             GUILayout.BeginVertical(GUILayout.Width(colW));
-            DrawColumnHeader("Network Diagnostics");
+            DrawColumnHeader("Diagnostics");
 
             if (rosBridge != null)
             {
                 DrawReadoutCard("Status", rosBridge.IsConnected ? "Connected" : "Listening", "");
-                DrawReadoutCard("Telemetry Rate", $"{rosBridge.PacketsPerSecond:F1} Hz", "");
-                DrawReadoutCard("Packets Received", $"{rosBridge.TotalPacketsReceived}", "");
+                DrawReadoutCard("Rate", $"{rosBridge.PacketsPerSecond:F1} Hz", "");
+                DrawReadoutCard("Packets", $"{rosBridge.TotalPacketsReceived}", "");
                 DrawReadoutCard("Encoders", rosBridge.IsReceivingRealEncoders ? "Active" : "Awaiting", "");
-                DrawReadoutCard("Last Packet", rosBridge.LastPacketTimestamp, "");
+                string lastTime = rosBridge.LastPacketTimestamp;
+                if (!string.IsNullOrEmpty(lastTime) && lastTime.Contains(".") && lastTime.Length > 8)
+                {
+                    lastTime = lastTime.Substring(0, 8);
+                }
+                DrawReadoutCard("Last Recv", lastTime, "");
             }
 
             GUILayout.EndVertical();
@@ -913,17 +949,17 @@ namespace RoboArm
 
             // Column 1: Core Poses
             GUILayout.BeginVertical(GUILayout.Width(colW));
-            DrawColumnHeader("Standard Robot Poses");
+            DrawColumnHeader("Standard Poses");
 
-            if (GUILayout.Button("🏠 Home (Upright)", styleCardPill, GUILayout.Height(32)))
+            if (GUILayout.Button("🏠 Home (Upright)", styleCardPill, GUILayout.Height(30)))
                 ApplyPresetPose(0f, 0f, 0f, 0f, 0.5f);
             GUILayout.Space(4);
 
-            if (GUILayout.Button("📦 Reach Forward", styleCardPill, GUILayout.Height(32)))
+            if (GUILayout.Button("📦 Reach Forward", styleCardPill, GUILayout.Height(30)))
                 ApplyPresetPose(45f, -35f, 50f, 25f, 1f);
             GUILayout.Space(4);
 
-            if (GUILayout.Button("🎯 Pick Object", styleCardPill, GUILayout.Height(32)))
+            if (GUILayout.Button("🎯 Pick Object", styleCardPill, GUILayout.Height(30)))
                 ApplyPresetPose(45f, -55f, 75f, 35f, 0f);
             GUILayout.EndVertical();
 
@@ -933,15 +969,15 @@ namespace RoboArm
             GUILayout.BeginVertical(GUILayout.Width(colW));
             DrawColumnHeader("Place & Zero");
 
-            if (GUILayout.Button("⬆️ Lift Object Up", styleCardPill, GUILayout.Height(32)))
+            if (GUILayout.Button("⬆️ Lift Object Up", styleCardPill, GUILayout.Height(30)))
                 ApplyPresetPose(45f, -25f, 35f, 15f, 0f);
             GUILayout.Space(4);
 
-            if (GUILayout.Button("⬅️ Place Target Left", styleCardPill, GUILayout.Height(32)))
+            if (GUILayout.Button("⬅️ Place Left", styleCardPill, GUILayout.Height(30)))
                 ApplyPresetPose(-50f, -55f, 75f, -35f, 1f);
             GUILayout.Space(4);
 
-            if (GUILayout.Button("📐 Zero Calibration", styleCardPill, GUILayout.Height(32)))
+            if (GUILayout.Button("📐 Zero Pose", styleCardPill, GUILayout.Height(30)))
                 ApplyPresetPose(0f, 0f, 0f, 0f, 0f);
             GUILayout.EndVertical();
 
@@ -949,14 +985,14 @@ namespace RoboArm
 
             // Column 3: Automated Demo
             GUILayout.BeginVertical(GUILayout.Width(colW));
-            DrawColumnHeader("Automated Sequences");
+            DrawColumnHeader("Sequencer");
 
-            if (GUILayout.Button(autoDemo ? "⏸️ Pause Demo" : "▶️ Play Waypoint Demo", styleBtnApply, GUILayout.Height(34)))
+            if (GUILayout.Button(autoDemo ? "⏸️ Pause Demo" : "▶️ Play Demo", styleBtnApply, GUILayout.Height(32)))
             {
                 autoDemo = !autoDemo;
             }
 
-            GUILayout.Space(10);
+            GUILayout.Space(8);
             GUILayout.Label($"Speed Multiplier: {demoSpeed:F2}x", styleSubtext);
             demoSpeed = GUILayout.HorizontalSlider(demoSpeed, 0.2f, 2.0f);
             GUILayout.EndVertical();
@@ -966,35 +1002,51 @@ namespace RoboArm
 
         private void DrawModernGuideTab(float totalW)
         {
-            float colW = (totalW - 30f) / 3f;
+            float colW = (totalW - 24f) / 2f;
 
             GUILayout.BeginHorizontal();
 
+            // Column 1: Digital Twin Architecture & ROS Command
             GUILayout.BeginVertical(GUILayout.Width(colW));
             DrawColumnHeader("Digital Twin Flow");
-            GUILayout.Label("• Cyan Ghost: Represents the target pose set by the user.\n\n" +
-                            "• Solid Arm: Driven strictly by physical optical encoders streamed from the Arduino at real-world motor speeds.", styleSubtext);
+            GUILayout.Label("• <b>Cyan Ghost:</b> Commanded target pose set by user sliders or trajectory planner.\n\n" +
+                            "• <b>Solid Arm:</b> Physical twin driven strictly by hardware optical encoders at real motor velocity.", styleBodyText, GUILayout.Width(colW));
+
+            GUILayout.Space(14);
+            DrawColumnHeader("Remote ROS 2 Driver");
+            GUILayout.Label("Run on Linux PC / Robot host:", styleSubtext);
+            GUILayout.Space(4);
+            GUILayout.Label("ros2 launch eb15_driver hardware_control.launch.py\nunity_ip:=<THIS_PC_IP>", styleCodeBox, GUILayout.Width(colW));
             GUILayout.EndVertical();
 
-            GUILayout.Space(15);
+            GUILayout.Space(24);
 
+            // Column 2: Keyboard Shortcuts & Tips
             GUILayout.BeginVertical(GUILayout.Width(colW));
-            DrawColumnHeader("Remote ROS Setup");
-            GUILayout.Label("When running on another Linux PC or robot controller:\n\n" +
-                            "ros2 launch eb15_driver hardware_control.launch.py unity_ip:=<THIS_PC_IP>", styleSubtext);
-            GUILayout.EndVertical();
+            DrawColumnHeader("Keyboard Shortcuts");
 
-            GUILayout.Space(15);
+            DrawShortcutRow("Tab", "Toggle Dashboard Window");
+            DrawShortcutRow("G", "Toggle Hologram Ghost Preview");
+            DrawShortcutRow("Space", "Play / Pause Waypoint Demo");
+            DrawShortcutRow("H", "Snap Directly to Home Pose");
 
-            GUILayout.BeginVertical(GUILayout.Width(colW));
-            DrawColumnHeader("Hotkeys");
-            GUILayout.Label("• Tab: Hide / Show Dashboard\n" +
-                            "• G: Toggle Hologram Ghost Preview\n" +
-                            "• H: Snap Directly to Home\n" +
-                            "• Space: Play / Pause Demo", styleSubtext);
+            GUILayout.Space(14);
+            DrawColumnHeader("Operational Tips");
+            GUILayout.Label("• Adjust sliders to inspect reach before sending to physical arm.\n\n" +
+                            "• Click <b>APPLY</b> or <b>SAVE</b> to stream goals to ROS 2 controller.", styleBodyText, GUILayout.Width(colW));
             GUILayout.EndVertical();
 
             GUILayout.EndHorizontal();
+        }
+
+        private void DrawShortcutRow(string key, string description)
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Box(key, styleCardPill, GUILayout.Width(46), GUILayout.Height(22));
+            GUILayout.Space(8);
+            GUILayout.Label(description, styleSubtext, GUILayout.Height(22));
+            GUILayout.EndHorizontal();
+            GUILayout.Space(3);
         }
     }
 }
