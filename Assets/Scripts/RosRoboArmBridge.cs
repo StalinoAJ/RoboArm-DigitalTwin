@@ -9,9 +9,10 @@ namespace RoboArm
 {
     /// <summary>
     /// High-performance UDP Bridge connecting Unity Digital Twin with ROS 2 (eb15_ws).
-    /// Receives joint state telemetry from ROS 2 (/joint_states or /eb15/measured_joint_states)
-    /// and drives the EB15 ArticulationBody joints in real time.
-    /// Can also send teleoperation/pose commands back to ROS 2 (/eb15/joint_commands).
+    /// - Telemetry In (Real Arm -> Unity): Receives measured encoder values from /eb15/measured_joint_states
+    ///   and streams them directly to the Solid Arm Digital Twin.
+    /// - Teleoperation Out (Unity Ghost Preview -> Real Arm): Sends commanded target goals from sliders
+    ///   to /eb15/joint_commands and /eb15/target_joint_states.
     /// </summary>
     [RequireComponent(typeof(ArmSimulationController))]
     public class RosRoboArmBridge : MonoBehaviour
@@ -26,27 +27,16 @@ namespace RoboArm
         [Tooltip("ROS 2 port for incoming joint commands from Unity (UDP).")]
         public int rosPort = 5006;
 
-        [Header("Bridge Control Mode")]
-        [Tooltip("Enable overriding Unity arm target positions with ROS 2 joint states.")]
-        public bool enableRosControl = true;
-
-        [Tooltip("When ROS packets are received, automatically pause the built-in auto demo.")]
-        public bool autoPauseDemoOnRosData = true;
-
-        [Tooltip("Smooth joint motion interpolation.")]
-        public bool smoothMotion = true;
-
-        [Tooltip("Speed multiplier for smoothing (higher = faster response).")]
-        public float smoothSpeed = 25f;
-
-        [Tooltip("Send current Unity joint targets to ROS 2 when changed.")]
-        public bool streamCommandsToRos = false;
+        [Header("Teleoperation Streaming")]
+        [Tooltip("Stream target slider poses directly to physical robot arm.")]
+        public bool streamCommandsToRos = true;
 
         [Header("Controller Reference")]
         public ArmSimulationController armController;
 
         [Header("Diagnostics & Telemetry")]
         [SerializeField] private bool isConnected = false;
+        [SerializeField] private bool isReceivingRealEncoders = false;
         [SerializeField] private float packetsPerSecond = 0f;
         [SerializeField] private int totalPacketsReceived = 0;
         [SerializeField] private string lastPacketTimestamp = "Never";
@@ -56,6 +46,7 @@ namespace RoboArm
         [Serializable]
         public class RosJointPacket
         {
+            public bool is_encoder;
             public float joint1;
             public float joint2;
             public float joint3;
@@ -71,13 +62,6 @@ namespace RoboArm
         private float lastReceiveTime = 0f;
         private int packetCounter = 0;
         private float fpsTimer = 0f;
-
-        // Target angles in degrees / normalized gripper
-        private float desiredJ1 = 0f;
-        private float desiredJ2 = 0f;
-        private float desiredJ3 = 0f;
-        private float desiredWrist = 0f;
-        private float desiredGripper = 0.5f;
 
         // Sockets and background thread
         private UdpClient udpReceiver;
@@ -129,7 +113,7 @@ namespace RoboArm
                 };
                 receiveThread.Start();
 
-                Debug.Log($"[RosRoboArmBridge] Started listening on UDP port {listenPort}. Target ROS host: {rosHost}:{rosPort}");
+                Debug.Log($"[RosRoboArmBridge] Listening on UDP:{listenPort} for physical encoder telemetry. Sending commands to {rosHost}:{rosPort}");
             }
             catch (Exception ex)
             {
@@ -160,6 +144,7 @@ namespace RoboArm
             }
 
             isConnected = false;
+            isReceivingRealEncoders = false;
         }
 
         private void ReceiveWorkerLoop()
@@ -207,7 +192,7 @@ namespace RoboArm
 
         void Update()
         {
-            // Update connection diagnostics
+            // Diagnostic FPS calculation
             fpsTimer += Time.deltaTime;
             if (fpsTimer >= 1.0f)
             {
@@ -235,75 +220,45 @@ namespace RoboArm
                 }
             }
 
-            // Consider connected if packet received within last 1.5 seconds
             isConnected = (Time.realtimeSinceStartup - lastReceiveTime) < 1.5f && totalPacketsReceived > 0;
 
-            if (receivedThisFrame && packetToApply != null && enableRosControl)
+            if (receivedThisFrame && packetToApply != null && armController != null)
             {
-                if (autoPauseDemoOnRosData && armController != null && armController.autoDemo)
-                {
-                    armController.autoDemo = false;
-                    Debug.Log("[RosRoboArmBridge] Received ROS 2 joint state -> Disabling autonomous demo to prioritize ROS control.");
-                }
+                isReceivingRealEncoders = packetToApply.is_encoder;
 
-                // Convert ROS units (radians) to Unity degrees
-                desiredJ1 = packetToApply.joint1 * Mathf.Rad2Deg;
-                desiredJ2 = packetToApply.joint2 * Mathf.Rad2Deg;
-                desiredJ3 = packetToApply.joint3 * Mathf.Rad2Deg;
-                desiredWrist = packetToApply.wrist_joint * Mathf.Rad2Deg;
+                // Convert ROS radians to Unity degrees
+                float j1Deg = packetToApply.joint1 * Mathf.Rad2Deg;
+                float j2Deg = packetToApply.joint2 * Mathf.Rad2Deg;
+                float j3Deg = packetToApply.joint3 * Mathf.Rad2Deg;
+                float wristDeg = packetToApply.wrist_joint * Mathf.Rad2Deg;
 
-                // Gripper in ROS: range is [-0.016m, 0.012m].
-                // Unity targetGripper is normalized [0, 1].
-                desiredGripper = Mathf.InverseLerp(-0.016f, 0.012f, packetToApply.gripper_left_joint);
-            }
+                // Gripper range [-0.016m, 0.012m] -> normalized [0, 1]
+                float gripNorm = Mathf.InverseLerp(-0.016f, 0.012f, packetToApply.gripper_left_joint);
 
-            // Apply to arm controller
-            if (enableRosControl && isConnected && armController != null)
-            {
-                if (smoothMotion)
-                {
-                    float factor = Mathf.Clamp01(smoothSpeed * Time.deltaTime);
-                    armController.targetJoint1 = Mathf.Lerp(armController.targetJoint1, desiredJ1, factor);
-                    armController.targetJoint2 = Mathf.Lerp(armController.targetJoint2, desiredJ2, factor);
-                    armController.targetJoint3 = Mathf.Lerp(armController.targetJoint3, desiredJ3, factor);
-                    armController.targetWrist = Mathf.Lerp(armController.targetWrist, desiredWrist, factor);
-                    armController.targetGripper = Mathf.Lerp(armController.targetGripper, desiredGripper, factor);
-                }
-                else
-                {
-                    armController.targetJoint1 = desiredJ1;
-                    armController.targetJoint2 = desiredJ2;
-                    armController.targetJoint3 = desiredJ3;
-                    armController.targetWrist = desiredWrist;
-                    armController.targetGripper = desiredGripper;
-                }
-            }
-
-            // Stream commands back to ROS if enabled
-            if (streamCommandsToRos && armController != null)
-            {
-                SendCurrentPoseToRos();
+                // Pass directly to the Solid Arm Digital Twin!
+                armController.OnHardwareEncoderReceived(j1Deg, j2Deg, j3Deg, wristDeg, gripNorm);
             }
         }
 
         /// <summary>
-        /// Sends the current Unity arm targets to ROS 2 on port 5006 as a JSON command.
+        /// Sends commanded target angles (from Ghost Preview / Sliders) to the real robot arm via ROS 2.
         /// </summary>
-        public void SendCurrentPoseToRos()
+        public void SendTargetPoseToRos(float j1Deg, float j2Deg, float j3Deg, float wristDeg, float gripNorm)
         {
-            if (armController == null || udpSender == null) return;
+            if (udpSender == null) return;
 
             try
             {
-                // Convert Unity degrees -> ROS radians
+                // Convert Unity degrees to ROS radians
                 var pkt = new RosJointPacket
                 {
-                    joint1 = armController.targetJoint1 * Mathf.Deg2Rad,
-                    joint2 = armController.targetJoint2 * Mathf.Deg2Rad,
-                    joint3 = armController.targetJoint3 * Mathf.Deg2Rad,
-                    wrist_joint = armController.targetWrist * Mathf.Deg2Rad,
-                    gripper_left_joint = Mathf.Lerp(-0.016f, 0.012f, armController.targetGripper),
-                    gripper_right_joint = Mathf.Lerp(-0.016f, 0.012f, armController.targetGripper)
+                    is_encoder = false,
+                    joint1 = j1Deg * Mathf.Deg2Rad,
+                    joint2 = j2Deg * Mathf.Deg2Rad,
+                    joint3 = j3Deg * Mathf.Deg2Rad,
+                    wrist_joint = wristDeg * Mathf.Deg2Rad,
+                    gripper_left_joint = Mathf.Lerp(-0.016f, 0.012f, gripNorm),
+                    gripper_right_joint = Mathf.Lerp(-0.016f, 0.012f, gripNorm)
                 };
 
                 string json = JsonUtility.ToJson(pkt);
@@ -320,21 +275,27 @@ namespace RoboArm
         {
             if (!showHUD) return;
 
-            // Compact ROS Connection Badge in top-right corner
-            int width = 310;
+            int width = 330;
             int height = 150;
             int x = Screen.width - width - 15;
             int y = 15;
 
-            GUI.Box(new Rect(x, y, width, height), "ROS 2 Digital Twin Bridge");
+            GUI.Box(new Rect(x, y, width, height), "Real Robot Hardware Twin Link");
             GUILayout.BeginArea(new Rect(x + 10, y + 25, width - 20, height - 30));
 
-            // Status indicator with color
             Color oldColor = GUI.color;
             if (isConnected)
             {
-                GUI.color = Color.green;
-                GUILayout.Label($" STATUS: CONNECTED ({packetsPerSecond:F0} Hz)");
+                if (isReceivingRealEncoders)
+                {
+                    GUI.color = Color.green;
+                    GUILayout.Label($" STATUS: HARDWARE ENCODERS LIVE ({packetsPerSecond:F0} Hz)");
+                }
+                else
+                {
+                    GUI.color = Color.cyan;
+                    GUILayout.Label($" STATUS: ROS 2 CONNECTED ({packetsPerSecond:F0} Hz)");
+                }
             }
             else
             {
@@ -343,21 +304,27 @@ namespace RoboArm
             }
             GUI.color = oldColor;
 
-            GUILayout.Label($"Packets Received: {totalPacketsReceived} | Last: {lastPacketTimestamp}");
+            GUILayout.Label($"Telemetry: {totalPacketsReceived} pkts | Last: {lastPacketTimestamp}");
+
+            streamCommandsToRos = GUILayout.Toggle(streamCommandsToRos, " Stream Slider Targets to Real Robot");
 
             GUILayout.BeginHorizontal();
-            enableRosControl = GUILayout.Toggle(enableRosControl, " ROS Control Active");
-            smoothMotion = GUILayout.Toggle(smoothMotion, " Smooth");
-            GUILayout.EndHorizontal();
-
-            GUILayout.BeginHorizontal();
-            if (GUILayout.Button(streamCommandsToRos ? "Streaming to ROS (ON)" : "Send Pose to ROS"))
+            if (GUILayout.Button("Send Goal Now"))
             {
-                SendCurrentPoseToRos();
+                if (armController != null)
+                {
+                    SendTargetPoseToRos(
+                        armController.targetJoint1,
+                        armController.targetJoint2,
+                        armController.targetJoint3,
+                        armController.targetWrist,
+                        armController.targetGripper
+                    );
+                }
             }
-            if (armController != null && GUILayout.Button(armController.autoDemo ? "Stop Demo" : "Start Demo"))
+            if (armController != null && GUILayout.Button("Snap Ghost to Arm"))
             {
-                armController.autoDemo = !armController.autoDemo;
+                armController.SnapGhostToPhysicalPose();
             }
             GUILayout.EndHorizontal();
 

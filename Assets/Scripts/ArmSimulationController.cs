@@ -9,24 +9,13 @@ using UnityEngine.InputSystem;
 namespace RoboArm
 {
     /// <summary>
-    /// Interactive & Autonomous Simulation Controller for the EB15 Robotic Arm.
-    /// Fully compatible with both the New Input System and Legacy Input Manager.
-    /// Provides On-Screen UI sliders and an automated pick-and-place trajectory demo.
+    /// Master Digital Twin & Interactive Controller for the EB15 Robotic Arm.
+    /// Manages both the Solid Arm (Real-world Physical Twin) and the Ghost Arm (Commanded Target Preview).
+    /// Enforces identical physical velocity limits between Unity and the real robot.
     /// </summary>
     public class ArmSimulationController : MonoBehaviour
     {
-        [Header("Simulation Mode")]
-        [Tooltip("If enabled, the arm automatically animates through a sequence of waypoints.")]
-        public bool autoDemo = true;
-        [Tooltip("Speed multiplier for the trajectory demo.")]
-        public float demoSpeed = 0.8f;
-
-        [Header("Joint Drive Settings")]
-        public float driveStiffness = 15000f;
-        public float driveDamping = 300f;
-        public float driveForceLimit = 1000f;
-
-        [Header("Joint References")]
+        [Header("Physical Twin Joints (Solid Arm)")]
         public ArticulationBody joint1;        // Revolute (-180 to 180 deg)
         public ArticulationBody joint2;        // Revolute (-90 to 90 deg)
         public ArticulationBody joint3;        // Revolute (-154.7 to 154.7 deg)
@@ -34,14 +23,48 @@ namespace RoboArm
         public ArticulationBody gripperLeft;   // Prismatic (-0.016 to 0.012 m)
         public ArticulationBody gripperRight;  // Prismatic (-0.016 to 0.012 m)
 
-        [Header("Current Target Angles (Deg / Meters)")]
+        [Header("Ghost Preview Reference")]
+        public GhostArmPreview ghostArm;
+
+        [Header("Commanded Target Angles (Ghost Preview & Real Hardware Goal)")]
         [Range(-180f, 180f)] public float targetJoint1 = 0f;
         [Range(-90f, 90f)] public float targetJoint2 = 0f;
         [Range(-154.7f, 154.7f)] public float targetJoint3 = 0f;
         [Range(-90f, 90f)] public float targetWrist = 0f;
         [Range(0f, 1f)] public float targetGripper = 0.5f; // 0 = closed, 1 = open
 
+        [Header("Physical Arm Measured Angles (Solid Digital Twin)")]
+        public float currentJoint1 = 0f;
+        public float currentJoint2 = 0f;
+        public float currentJoint3 = 0f;
+        public float currentWrist = 0f;
+        public float currentGripper = 0.5f;
+
+        [Header("Real-World Physical Speed Limits (deg/sec & m/sec)")]
+        [Tooltip("Max joint 1 speed: 1.0 rad/s = 57.3 deg/s (matches physical stepper limit)")]
+        public float maxSpeedJoint1 = 57.3f;
+        [Tooltip("Max joint 2 speed: 0.8 rad/s = 45.8 deg/s (matches shoulder gear limit)")]
+        public float maxSpeedJoint2 = 45.8f;
+        [Tooltip("Max joint 3 speed: 1.0 rad/s = 57.3 deg/s")]
+        public float maxSpeedJoint3 = 57.3f;
+        [Tooltip("Max wrist speed: 2.0 rad/s = 114.6 deg/s")]
+        public float maxSpeedWrist = 114.6f;
+        [Tooltip("Max gripper speed (normalized units / sec)")]
+        public float maxSpeedGripper = 1.78f;
+
+        [Header("Drive Dynamics")]
+        public float driveStiffness = 20000f;
+        public float driveDamping = 350f;
+        public float driveForceLimit = 1500f;
+
+        [Header("Operation Mode")]
+        public bool autoDemo = false;
+        public float demoSpeed = 0.6f;
         public bool showUI = true;
+
+        [Header("Hardware Encoder Status")]
+        public bool isHardwareEncoderLive = false;
+        private float lastEncoderReceiveTime = -10f;
 
         [System.Serializable]
         public struct Waypoint
@@ -68,6 +91,7 @@ namespace RoboArm
 
         private int currentWaypointIndex = 0;
         private float waypointProgress = 0f;
+        private RosRoboArmBridge rosBridge;
 
         void Awake()
         {
@@ -82,6 +106,13 @@ namespace RoboArm
                 var baseAb = baseLink.GetComponent<ArticulationBody>();
                 if (baseAb != null) baseAb.immovable = true;
             }
+
+            if (ghostArm == null)
+            {
+                ghostArm = FindFirstObjectByType<GhostArmPreview>();
+            }
+
+            rosBridge = GetComponent<RosRoboArmBridge>();
         }
 
         public void FindJoints()
@@ -125,17 +156,91 @@ namespace RoboArm
         {
             HandleKeyboardInput();
 
+            // Encoder feedback timeout check (1.2 seconds)
+            isHardwareEncoderLive = (Time.time - lastEncoderReceiveTime) < 1.2f;
+
             if (autoDemo && waypoints != null && waypoints.Length > 1)
             {
                 UpdateAutoDemo();
             }
 
-            ApplyJointTargets();
+            // Update Ghost Arm target preview immediately
+            if (ghostArm != null)
+            {
+                ghostArm.SetPose(targetJoint1, targetJoint2, targetJoint3, targetWrist, targetGripper);
+            }
+
+            // Update Solid Arm (Physical Twin)
+            if (!isHardwareEncoderLive)
+            {
+                // Velocity-matched simulation: move current positions towards target positions
+                // at the EXACT real-world hardware stepper/servo speeds
+                float dt = Time.deltaTime;
+                currentJoint1 = Mathf.MoveTowards(currentJoint1, targetJoint1, maxSpeedJoint1 * dt);
+                currentJoint2 = Mathf.MoveTowards(currentJoint2, targetJoint2, maxSpeedJoint2 * dt);
+                currentJoint3 = Mathf.MoveTowards(currentJoint3, targetJoint3, maxSpeedJoint3 * dt);
+                currentWrist = Mathf.MoveTowards(currentWrist, targetWrist, maxSpeedWrist * dt);
+                currentGripper = Mathf.MoveTowards(currentGripper, targetGripper, maxSpeedGripper * dt);
+            }
+
+            ApplyCurrentJointsToPhysicalTwin();
         }
 
         void FixedUpdate()
         {
-            ApplyJointTargets();
+            ApplyCurrentJointsToPhysicalTwin();
+        }
+
+        /// <summary>
+        /// Called by RosRoboArmBridge when real Arduino hardware encoder data is received over UDP.
+        /// </summary>
+        public void OnHardwareEncoderReceived(float j1Deg, float j2Deg, float j3Deg, float wristDeg, float gripNorm)
+        {
+            currentJoint1 = Mathf.Clamp(j1Deg, -180f, 180f);
+            currentJoint2 = Mathf.Clamp(j2Deg, -90f, 90f);
+            currentJoint3 = Mathf.Clamp(j3Deg, -154.7f, 154.7f);
+            currentWrist = Mathf.Clamp(wristDeg, -90f, 90f);
+            currentGripper = Mathf.Clamp01(gripNorm);
+
+            lastEncoderReceiveTime = Time.time;
+            isHardwareEncoderLive = true;
+        }
+
+        /// <summary>
+        /// Snaps the ghost sliders to the physical arm's current position.
+        /// </summary>
+        public void SnapGhostToPhysicalPose()
+        {
+            targetJoint1 = currentJoint1;
+            targetJoint2 = currentJoint2;
+            targetJoint3 = currentJoint3;
+            targetWrist = currentWrist;
+            targetGripper = currentGripper;
+
+            if (ghostArm != null)
+            {
+                ghostArm.SetPose(targetJoint1, targetJoint2, targetJoint3, targetWrist, targetGripper);
+            }
+        }
+
+        private void ApplyCurrentJointsToPhysicalTwin()
+        {
+            SetTarget(joint1, currentJoint1);
+            SetTarget(joint2, currentJoint2);
+            SetTarget(joint3, currentJoint3);
+            SetTarget(wristJoint, currentWrist);
+
+            float gripM = Mathf.Lerp(-0.016f, 0.012f, currentGripper);
+            SetTarget(gripperLeft, gripM);
+            SetTarget(gripperRight, gripM);
+        }
+
+        private void SetTarget(ArticulationBody ab, float target)
+        {
+            if (ab == null || ab.jointType == ArticulationJointType.FixedJoint) return;
+            var drive = ab.xDrive;
+            drive.target = target;
+            ab.xDrive = drive;
         }
 
         private void HandleKeyboardInput()
@@ -145,26 +250,22 @@ namespace RoboArm
             {
                 if (Keyboard.current != null)
                 {
-                    if (Keyboard.current.spaceKey.wasPressedThisFrame)
-                        autoDemo = !autoDemo;
-                    if (Keyboard.current.tabKey.wasPressedThisFrame)
-                        showUI = !showUI;
+                    if (Keyboard.current.spaceKey.wasPressedThisFrame) autoDemo = !autoDemo;
+                    if (Keyboard.current.tabKey.wasPressedThisFrame) showUI = !showUI;
+                    if (Keyboard.current.gKey.wasPressedThisFrame && ghostArm != null)
+                        ghostArm.SetVisible(!ghostArm.isVisible);
                 }
             }
-            catch (System.Exception)
-            {
-                // Suppress any input exception so physics updates never fail
-            }
+            catch (System.Exception) { }
 #else
             try
             {
                 if (Input.GetKeyDown(KeyCode.Space)) autoDemo = !autoDemo;
                 if (Input.GetKeyDown(KeyCode.Tab)) showUI = !showUI;
+                if (Input.GetKeyDown(KeyCode.G) && ghostArm != null)
+                    ghostArm.SetVisible(!ghostArm.isVisible);
             }
-            catch (System.Exception)
-            {
-                // Suppress any input exception so physics updates never fail
-            }
+            catch (System.Exception) { }
 #endif
         }
 
@@ -187,128 +288,126 @@ namespace RoboArm
             targetJoint3 = Mathf.Lerp(from.j3, to.j3, t);
             targetWrist = Mathf.Lerp(from.wrist, to.wrist, t);
             targetGripper = Mathf.Lerp(from.grip, to.grip, t);
-        }
 
-        public void ApplyJointTargets()
-        {
-            targetJoint1 = Mathf.Clamp(targetJoint1, -180f, 180f);
-            targetJoint2 = Mathf.Clamp(targetJoint2, -90f, 90f);
-            targetJoint3 = Mathf.Clamp(targetJoint3, -154.7f, 154.7f);
-            targetWrist = Mathf.Clamp(targetWrist, -90f, 90f);
-            targetGripper = Mathf.Clamp01(targetGripper);
-
-            SetTarget(joint1, targetJoint1);
-            SetTarget(joint2, targetJoint2);
-            SetTarget(joint3, targetJoint3);
-            SetTarget(wristJoint, targetWrist);
-
-            // Gripper: range is [-0.016m, 0.012m]
-            float gripPos = Mathf.Lerp(-0.016f, 0.012f, targetGripper);
-            SetTarget(gripperLeft, gripPos);
-            SetTarget(gripperRight, gripPos);
-        }
-
-        private void SetTarget(ArticulationBody ab, float target)
-        {
-            if (ab == null || ab.jointType == ArticulationJointType.FixedJoint) return;
-            var drive = ab.xDrive;
-            drive.target = target;
-            ab.xDrive = drive;
+            if (rosBridge != null && rosBridge.streamCommandsToRos)
+            {
+                rosBridge.SendTargetPoseToRos(targetJoint1, targetJoint2, targetJoint3, targetWrist, targetGripper);
+            }
         }
 
         void OnGUI()
         {
-            // Event-based hotkeys (immune to Input System restrictions)
             if (Event.current.type == EventType.KeyDown)
             {
-                if (Event.current.keyCode == KeyCode.Space)
+                if (Event.current.keyCode == KeyCode.Space) { autoDemo = !autoDemo; Event.current.Use(); }
+                else if (Event.current.keyCode == KeyCode.Tab) { showUI = !showUI; Event.current.Use(); }
+                else if (Event.current.keyCode == KeyCode.G && ghostArm != null)
                 {
-                    autoDemo = !autoDemo;
-                    Event.current.Use();
-                }
-                else if (Event.current.keyCode == KeyCode.Tab)
-                {
-                    showUI = !showUI;
+                    ghostArm.SetVisible(!ghostArm.isVisible);
                     Event.current.Use();
                 }
             }
 
             if (!showUI)
             {
-                if (GUI.Button(new Rect(15, 15, 120, 30), "Show Controls"))
-                {
-                    showUI = true;
-                }
+                if (GUI.Button(new Rect(15, 15, 120, 30), "Show Controls")) showUI = true;
                 return;
             }
 
-            int panelWidth = 340;
-            int panelHeight = 400;
-            GUI.Box(new Rect(15, 15, panelWidth, panelHeight), "EB15 Robot Arm Simulation Control");
+            int panelWidth = 360;
+            int panelHeight = 470;
+            GUI.Box(new Rect(15, 15, panelWidth, panelHeight), "EB15 Digital Twin & Ghost Preview");
 
             GUILayout.BeginArea(new Rect(25, 42, panelWidth - 20, panelHeight - 35));
 
-            // Auto Demo toggle
-            bool prevDemo = autoDemo;
-            autoDemo = GUILayout.Toggle(autoDemo, " Auto Trajectory Demo (Space to toggle)");
-            if (autoDemo && waypoints != null && waypoints.Length > 0)
+            // Status badge
+            Color oldCol = GUI.color;
+            if (isHardwareEncoderLive)
             {
-                var wp = waypoints[currentWaypointIndex];
-                GUILayout.Label($"Executing: <b>{wp.name}</b> ({currentWaypointIndex + 1}/{waypoints.Length})");
+                GUI.color = Color.green;
+                GUILayout.Label("• TWIN MODE: PHYSICAL HARDWARE ENCODER FEEDBACK");
             }
             else
             {
-                GUILayout.Label("<color=#88ccff>Interactive Mode - Drag Sliders Below:</color>");
+                GUI.color = new Color(0.2f, 0.85f, 1.0f);
+                GUILayout.Label("• TWIN MODE: PHYSICAL VELOCITY-MATCHED SIMULATION");
             }
+            GUI.color = oldCol;
 
-            GUILayout.Space(6);
+            GUILayout.Space(4);
 
-            // Joint 1
-            float actJ1 = joint1 != null ? joint1.jointPosition[0] * Mathf.Rad2Deg : 0f;
-            GUILayout.Label($"Joint 1 (Base Yaw): {targetJoint1:F1}° [Act: {actJ1:F1}°]");
-            float newJ1 = GUILayout.HorizontalSlider(targetJoint1, -180f, 180f);
-            if (newJ1 != targetJoint1) { targetJoint1 = newJ1; autoDemo = false; ApplyJointTargets(); }
-
-            // Joint 2
-            float actJ2 = joint2 != null ? joint2.jointPosition[0] * Mathf.Rad2Deg : 0f;
-            GUILayout.Label($"Joint 2 (Shoulder): {targetJoint2:F1}° [Act: {actJ2:F1}°]");
-            float newJ2 = GUILayout.HorizontalSlider(targetJoint2, -90f, 90f);
-            if (newJ2 != targetJoint2) { targetJoint2 = newJ2; autoDemo = false; ApplyJointTargets(); }
-
-            // Joint 3
-            float actJ3 = joint3 != null ? joint3.jointPosition[0] * Mathf.Rad2Deg : 0f;
-            GUILayout.Label($"Joint 3 (Elbow): {targetJoint3:F1}° [Act: {actJ3:F1}°]");
-            float newJ3 = GUILayout.HorizontalSlider(targetJoint3, -154.7f, 154.7f);
-            if (newJ3 != targetJoint3) { targetJoint3 = newJ3; autoDemo = false; ApplyJointTargets(); }
-
-            // Wrist
-            float actWrist = wristJoint != null ? wristJoint.jointPosition[0] * Mathf.Rad2Deg : 0f;
-            GUILayout.Label($"Wrist (Roll): {targetWrist:F1}° [Act: {actWrist:F1}°]");
-            float newWrist = GUILayout.HorizontalSlider(targetWrist, -90f, 90f);
-            if (newWrist != targetWrist) { targetWrist = newWrist; autoDemo = false; ApplyJointTargets(); }
-
-            // Gripper
-            GUILayout.Label($"Gripper: {(targetGripper < 0.2f ? "Closed" : targetGripper > 0.8f ? "Open" : $"{targetGripper * 100:F0}%")}");
-            float newGrip = GUILayout.HorizontalSlider(targetGripper, 0f, 1f);
-            if (newGrip != targetGripper) { targetGripper = newGrip; autoDemo = false; ApplyJointTargets(); }
-
-            GUILayout.Space(8);
+            // Ghost Preview controls
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Reset to Home"))
+            if (ghostArm != null)
             {
-                targetJoint1 = 0f;
-                targetJoint2 = 0f;
-                targetJoint3 = 0f;
-                targetWrist = 0f;
-                targetGripper = 0.5f;
-                autoDemo = false;
-                ApplyJointTargets();
+                bool ghostVis = GUILayout.Toggle(ghostArm.isVisible, " Ghost Preview (G)");
+                if (ghostVis != ghostArm.isVisible) ghostArm.SetVisible(ghostVis);
             }
-            if (GUILayout.Button("Hide [Tab]"))
+            if (GUILayout.Button("Snap Ghost to Arm", GUILayout.Width(130)))
             {
-                showUI = false;
+                SnapGhostToPhysicalPose();
             }
             GUILayout.EndHorizontal();
+
+            GUILayout.Space(6);
+            GUILayout.Label("Ghost Target Sliders (Instant Goal):");
+
+            // Slider 1
+            float prevJ1 = targetJoint1;
+            GUILayout.Label($"Joint 1 (Base): {targetJoint1:F1}° (Real: {currentJoint1:F1}°)");
+            targetJoint1 = GUILayout.HorizontalSlider(targetJoint1, -180f, 180f);
+
+            // Slider 2
+            float prevJ2 = targetJoint2;
+            GUILayout.Label($"Joint 2 (Shoulder): {targetJoint2:F1}° (Real: {currentJoint2:F1}°)");
+            targetJoint2 = GUILayout.HorizontalSlider(targetJoint2, -90f, 90f);
+
+            // Slider 3
+            float prevJ3 = targetJoint3;
+            GUILayout.Label($"Joint 3 (Elbow): {targetJoint3:F1}° (Real: {currentJoint3:F1}°)");
+            targetJoint3 = GUILayout.HorizontalSlider(targetJoint3, -154.7f, 154.7f);
+
+            // Slider Wrist
+            float prevWrist = targetWrist;
+            GUILayout.Label($"Wrist: {targetWrist:F1}° (Real: {currentWrist:F1}°)");
+            targetWrist = GUILayout.HorizontalSlider(targetWrist, -90f, 90f);
+
+            // Slider Gripper
+            float prevGrip = targetGripper;
+            GUILayout.Label($"Gripper: {(targetGripper * 100f):F0}% (Real: {(currentGripper * 100f):F0}%)");
+            targetGripper = GUILayout.HorizontalSlider(targetGripper, 0f, 1f);
+
+            // Send to ROS when slider changes or on button press
+            bool slidersChanged = Mathf.Abs(targetJoint1 - prevJ1) > 0.01f ||
+                                  Mathf.Abs(targetJoint2 - prevJ2) > 0.01f ||
+                                  Mathf.Abs(targetJoint3 - prevJ3) > 0.01f ||
+                                  Mathf.Abs(targetWrist - prevWrist) > 0.01f ||
+                                  Mathf.Abs(targetGripper - prevGrip) > 0.005f;
+
+            if (slidersChanged && rosBridge != null && rosBridge.streamCommandsToRos)
+            {
+                rosBridge.SendTargetPoseToRos(targetJoint1, targetJoint2, targetJoint3, targetWrist, targetGripper);
+            }
+
+            GUILayout.Space(8);
+
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button(autoDemo ? "Stop Demo (Space)" : "Run Waypoint Demo"))
+            {
+                autoDemo = !autoDemo;
+            }
+            if (rosBridge != null && GUILayout.Button("Send Goal to Robot"))
+            {
+                rosBridge.SendTargetPoseToRos(targetJoint1, targetJoint2, targetJoint3, targetWrist, targetGripper);
+            }
+            GUILayout.EndHorizontal();
+
+            // Real-time tracking delta
+            float lag = Mathf.Abs(targetJoint1 - currentJoint1) +
+                        Mathf.Abs(targetJoint2 - currentJoint2) +
+                        Mathf.Abs(targetJoint3 - currentJoint3) +
+                        Mathf.Abs(targetWrist - currentWrist);
+            GUILayout.Label($"Goal Lag (Total Error): {lag:F1}°");
 
             GUILayout.EndArea();
         }
