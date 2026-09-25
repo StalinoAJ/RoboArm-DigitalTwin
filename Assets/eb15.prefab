@@ -7825,6 +7825,7 @@ GameObject:
   - component: {fileID: 261597684897202337}
   - component: {fileID: 645728032898524136}
   - component: {fileID: 4352817359331961886}
+  - component: {fileID: 3875263201706123748}
   m_Layer: 0
   m_Name: eb15
   m_TagString: robot
@@ -7943,6 +7944,32 @@ MonoBehaviour:
     j3: 0
     wrist: 0
     grip: 0.5
+--- !u!114 &3875263201706123748
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7950988552964067694}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 23f4f12491b48f54b8944bc14c254926, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::RoboArm.RosRoboArmBridge
+  listenPort: 5005
+  rosHost: 127.0.0.1
+  rosPort: 5006
+  enableRosControl: 1
+  autoPauseDemoOnRosData: 1
+  smoothMotion: 1
+  smoothSpeed: 25
+  streamCommandsToRos: 0
+  armController: {fileID: 0}
+  isConnected: 0
+  packetsPerSecond: 0
+  totalPacketsReceived: 0
+  lastPacketTimestamp: Never
+  showHUD: 1
 --- !u!1 &7964332946028241688
 GameObject:
   m_ObjectHideFlags: 0
