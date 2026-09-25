@@ -48,9 +48,9 @@ namespace RoboArm
         public float maxSpeedGripper = 1.78f;  // Normalized travel rate (0.05 m/s)
 
         [Header("Drive Dynamics")]
-        public float driveStiffness = 20000f;
-        public float driveDamping = 350f;
-        public float driveForceLimit = 1500f;
+        public float driveStiffness = 30000f;
+        public float driveDamping = 500f;
+        public float driveForceLimit = 5000f;
 
         [Header("Operation Mode")]
         public bool autoDemo = false;
@@ -132,11 +132,29 @@ namespace RoboArm
             FindJoints();
             ConfigureJointDrives();
 
+            // Stabilize ArticulationBodies with high solver iterations
+            var abs = GetComponentsInChildren<ArticulationBody>();
+            foreach (var ab in abs)
+            {
+                ab.solverIterations = 30;
+                ab.solverVelocityIterations = 15;
+            }
+
             var baseLink = transform.Find("world/base_link");
             if (baseLink != null)
             {
                 var baseAb = baseLink.GetComponent<ArticulationBody>();
                 if (baseAb != null) baseAb.immovable = true;
+            }
+
+            // Ignore all internal collisions between robot links to completely prevent physics fighting
+            var colliders = GetComponentsInChildren<Collider>();
+            for (int i = 0; i < colliders.Length; i++)
+            {
+                for (int j = i + 1; j < colliders.Length; j++)
+                {
+                    Physics.IgnoreCollision(colliders[i], colliders[j], true);
+                }
             }
 
             if (ghostArm == null)
@@ -471,26 +489,26 @@ namespace RoboArm
             styleSectionHeader.normal.textColor = new Color(0.12f, 0.16f, 0.22f);
 
             styleSubtext = new GUIStyle();
-            styleSubtext.fontSize = 12;
+            styleSubtext.fontSize = 11;
             styleSubtext.fontStyle = FontStyle.Bold;
             styleSubtext.normal.textColor = new Color(0.25f, 0.31f, 0.39f);
 
             styleCardPill = new GUIStyle();
             styleCardPill.normal.background = texDropdownPill;
             styleCardPill.border = new RectOffset(8, 8, 8, 8);
-            styleCardPill.fontSize = 12;
+            styleCardPill.fontSize = 11;
             styleCardPill.fontStyle = FontStyle.Bold;
             styleCardPill.normal.textColor = Color.white;
             styleCardPill.alignment = TextAnchor.MiddleCenter;
 
             styleValueLabel = new GUIStyle();
-            styleValueLabel.fontSize = 12;
+            styleValueLabel.fontSize = 11;
             styleValueLabel.fontStyle = FontStyle.Bold;
             styleValueLabel.normal.textColor = new Color(0.12f, 0.16f, 0.22f);
             styleValueLabel.alignment = TextAnchor.MiddleRight;
 
             styleCheckLabel = new GUIStyle();
-            styleCheckLabel.fontSize = 12;
+            styleCheckLabel.fontSize = 11;
             styleCheckLabel.fontStyle = FontStyle.Bold;
             styleCheckLabel.normal.textColor = new Color(0.16f, 0.22f, 0.30f);
             styleCheckLabel.alignment = TextAnchor.MiddleLeft;
@@ -504,7 +522,7 @@ namespace RoboArm
             styleBtnReset = new GUIStyle();
             styleBtnReset.normal.background = texBtnReset;
             styleBtnReset.border = new RectOffset(8, 8, 8, 8);
-            styleBtnReset.fontSize = 12;
+            styleBtnReset.fontSize = 11;
             styleBtnReset.fontStyle = FontStyle.Bold;
             styleBtnReset.normal.textColor = Color.white;
             styleBtnReset.alignment = TextAnchor.MiddleCenter;
@@ -512,7 +530,7 @@ namespace RoboArm
             styleBtnClose = new GUIStyle();
             styleBtnClose.normal.background = texBtnClose;
             styleBtnClose.border = new RectOffset(8, 8, 8, 8);
-            styleBtnClose.fontSize = 12;
+            styleBtnClose.fontSize = 11;
             styleBtnClose.fontStyle = FontStyle.Bold;
             styleBtnClose.normal.textColor = Color.white;
             styleBtnClose.alignment = TextAnchor.MiddleCenter;
@@ -520,7 +538,7 @@ namespace RoboArm
             styleBtnApply = new GUIStyle();
             styleBtnApply.normal.background = texBtnApply;
             styleBtnApply.border = new RectOffset(8, 8, 8, 8);
-            styleBtnApply.fontSize = 12;
+            styleBtnApply.fontSize = 11;
             styleBtnApply.fontStyle = FontStyle.Bold;
             styleBtnApply.normal.textColor = Color.white;
             styleBtnApply.alignment = TextAnchor.MiddleCenter;
@@ -528,7 +546,7 @@ namespace RoboArm
             styleBtnSave = new GUIStyle();
             styleBtnSave.normal.background = texBtnSave;
             styleBtnSave.border = new RectOffset(8, 8, 8, 8);
-            styleBtnSave.fontSize = 12;
+            styleBtnSave.fontSize = 11;
             styleBtnSave.fontStyle = FontStyle.Bold;
             styleBtnSave.normal.textColor = Color.white;
             styleBtnSave.alignment = TextAnchor.MiddleCenter;
@@ -554,20 +572,20 @@ namespace RoboArm
             if (!showDashboard)
             {
                 // Sleek Open Pill in top left
-                if (GUI.Button(new Rect(25, 25, 140, 36), "⚙️ Open Controls", styleBtnApply))
+                if (GUI.Button(new Rect(24, 24, 175, 34), "⚙️ Open Controls (Tab)", styleBtnApply))
                 {
                     showDashboard = true;
                 }
                 return;
             }
 
-            // Calculate responsive dimensions matching uploaded image
-            float panelW = Mathf.Clamp(Screen.width * 0.78f, 750f, 960f);
-            float panelH = Mathf.Clamp(Screen.height * 0.82f, 480f, 580f);
-            float panelX = (Screen.width - panelW) * 0.5f;
-            float panelY = (Screen.height - panelH) * 0.5f;
+            // Docked in top-left corner so robot remains completely visible in the center/right
+            float panelW = Mathf.Clamp(Screen.width * 0.48f, 750f, 820f);
+            float panelH = Mathf.Clamp(Screen.height * 0.74f, 430f, 510f);
+            float panelX = 22f;
+            float panelY = 22f;
 
-            float sidebarW = 160f;
+            float sidebarW = 140f;
             float mainW = panelW - sidebarW;
 
             // Draw Dark Frosted Left Sidebar
@@ -579,7 +597,7 @@ namespace RoboArm
             // -------------------------------------------------------------
             // SIDEBAR CONTENT
             // -------------------------------------------------------------
-            GUILayout.BeginArea(new Rect(panelX + 18, panelY + 30, sidebarW - 25, panelH - 50));
+            GUILayout.BeginArea(new Rect(panelX + 14, panelY + 24, sidebarW - 20, panelH - 44));
 
             string[] tabs = new string[] { "Controls", "Network", "Presets", "Guide" };
             for (int i = 0; i < tabs.Length; i++)
@@ -590,17 +608,17 @@ namespace RoboArm
                 {
                     // Cyan/Blue diamond indicator matching reference image
                     GUI.color = new Color(0.18f, 0.52f, 1.0f);
-                    GUILayout.Label("◆", styleTabActive, GUILayout.Width(16));
+                    GUILayout.Label("◆", styleTabActive, GUILayout.Width(14));
                     GUI.color = Color.white;
-                    if (GUILayout.Button(tabs[i], styleTabActive, GUILayout.Height(38))) selectedSidebarTab = i;
+                    if (GUILayout.Button(tabs[i], styleTabActive, GUILayout.Height(34))) selectedSidebarTab = i;
                 }
                 else
                 {
-                    GUILayout.Space(20);
-                    if (GUILayout.Button(tabs[i], styleTabInactive, GUILayout.Height(38))) selectedSidebarTab = i;
+                    GUILayout.Space(18);
+                    if (GUILayout.Button(tabs[i], styleTabInactive, GUILayout.Height(34))) selectedSidebarTab = i;
                 }
                 GUILayout.EndHorizontal();
-                GUILayout.Space(6);
+                GUILayout.Space(4);
             }
 
             GUILayout.FlexibleSpace();
@@ -614,9 +632,9 @@ namespace RoboArm
             // -------------------------------------------------------------
             // MAIN BODY CONTENT (3 Columns + Bottom Action Bar)
             // -------------------------------------------------------------
-            float contentMargin = 22f;
+            float contentMargin = 16f;
             float contentW = mainW - (contentMargin * 2);
-            float bottomBarH = 46f;
+            float bottomBarH = 42f;
             float contentH = panelH - (contentMargin * 2) - bottomBarH;
 
             GUILayout.BeginArea(new Rect(panelX + sidebarW + contentMargin, panelY + contentMargin, contentW, contentH));
@@ -634,23 +652,23 @@ namespace RoboArm
             // -------------------------------------------------------------
             // BOTTOM ACTION BAR (Matching Image Buttons)
             // -------------------------------------------------------------
-            float btnY = panelY + panelH - bottomBarH - 12;
-            float btnW = 95f;
-            float btnGap = 12f;
+            float btnY = panelY + panelH - bottomBarH - 8;
+            float btnW = 82f;
+            float btnGap = 8f;
             float rightEdge = panelX + panelW - contentMargin;
 
             // Buttons: RESET ALL, CLOSE, APPLY, SAVE
-            if (GUI.Button(new Rect(rightEdge - (btnW * 4 + btnGap * 3), btnY, btnW, 32), "RESET ALL", styleBtnReset))
+            if (GUI.Button(new Rect(rightEdge - (btnW * 4 + btnGap * 3), btnY, btnW, 30), "RESET ALL", styleBtnReset))
             {
                 SnapGhostToPhysicalPose();
             }
 
-            if (GUI.Button(new Rect(rightEdge - (btnW * 3 + btnGap * 2), btnY, btnW, 32), "CLOSE", styleBtnClose))
+            if (GUI.Button(new Rect(rightEdge - (btnW * 3 + btnGap * 2), btnY, btnW, 30), "CLOSE", styleBtnClose))
             {
                 showDashboard = false;
             }
 
-            if (GUI.Button(new Rect(rightEdge - (btnW * 2 + btnGap), btnY, btnW, 32), "APPLY", styleBtnApply))
+            if (GUI.Button(new Rect(rightEdge - (btnW * 2 + btnGap), btnY, btnW, 30), "APPLY", styleBtnApply))
             {
                 if (rosBridge != null)
                 {
@@ -658,7 +676,7 @@ namespace RoboArm
                 }
             }
 
-            if (GUI.Button(new Rect(rightEdge - btnW, btnY, btnW, 32), "SAVE", styleBtnSave))
+            if (GUI.Button(new Rect(rightEdge - btnW, btnY, btnW, 30), "SAVE", styleBtnSave))
             {
                 SnapGhostToPhysicalPose();
                 if (rosBridge != null)
