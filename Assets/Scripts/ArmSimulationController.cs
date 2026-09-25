@@ -10,8 +10,8 @@ namespace RoboArm
 {
     /// <summary>
     /// Master Digital Twin & Interactive Dashboard for the EB15 Robotic Arm.
+    /// Features a modern, semi-transparent frosted glass UI inspired by game/simulator settings menus.
     /// Manages the Physical Twin (Solid Arm) and Commanded Goal (Ghost Preview).
-    /// Provides an intuitive, self-explanatory UI with runtime IP/port configuration for remote ROS PCs.
     /// </summary>
     public class ArmSimulationController : MonoBehaviour
     {
@@ -62,12 +62,9 @@ namespace RoboArm
 
         [Header("UI Dashboard Settings")]
         public bool showDashboard = true;
-        public bool isMinimized = false;
-        private Rect windowRect = new Rect(20, 20, 450, 680);
-        private int selectedTab = 0; // 0: Controls, 1: Network, 2: Presets, 3: Help
-        private Vector2 scrollPos = Vector2.zero;
+        private int selectedSidebarTab = 0; // 0: Controls, 1: Network, 2: Presets, 3: Guide
 
-        // Network input fields (for editing in UI)
+        // Network inputs
         private string inputRosHost = "127.0.0.1";
         private string inputListenPort = "5005";
         private string inputRosPort = "5006";
@@ -100,22 +97,34 @@ namespace RoboArm
         private float waypointProgress = 0f;
         private RosRoboArmBridge rosBridge;
 
-        // Custom GUI styles
-        private GUIStyle winStyle;
-        private GUIStyle headerStyle;
-        private GUIStyle cardStyle;
-        private GUIStyle tabActiveStyle;
-        private GUIStyle tabInactiveStyle;
-        private GUIStyle labelBold;
-        private GUIStyle labelDim;
-        private GUIStyle btnAccent;
-        private GUIStyle btnDanger;
-        private Texture2D texDark;
-        private Texture2D texCard;
-        private Texture2D texActiveTab;
-        private Texture2D texAccent;
-        private Texture2D texDanger;
-        private bool stylesInitialized = false;
+        // Custom Frosted Glass Textures & Styles
+        private Texture2D texSidebar;
+        private Texture2D texMainPanel;
+        private Texture2D texDropdownPill;
+        private Texture2D texDivider;
+        private Texture2D texCheckmarkOn;
+        private Texture2D texCheckmarkOff;
+        private Texture2D texBtnReset;
+        private Texture2D texBtnClose;
+        private Texture2D texBtnApply;
+        private Texture2D texBtnSave;
+
+        private GUIStyle styleSidebar;
+        private GUIStyle styleMainPanel;
+        private GUIStyle styleTabActive;
+        private GUIStyle styleTabInactive;
+        private GUIStyle styleSectionHeader;
+        private GUIStyle styleDivider;
+        private GUIStyle styleSubtext;
+        private GUIStyle styleCardPill;
+        private GUIStyle styleValueLabel;
+        private GUIStyle styleCheckLabel;
+        private GUIStyle styleCheckIcon;
+        private GUIStyle styleBtnReset;
+        private GUIStyle styleBtnClose;
+        private GUIStyle styleBtnApply;
+        private GUIStyle styleBtnSave;
+        private bool stylesReady = false;
 
         void Awake()
         {
@@ -132,7 +141,7 @@ namespace RoboArm
 
             if (ghostArm == null)
             {
-                ghostArm = FindFirstObjectByType<GhostArmPreview>();
+                ghostArm = FindAnyObjectByType<GhostArmPreview>();
             }
 
             rosBridge = GetComponent<RosRoboArmBridge>();
@@ -347,69 +356,184 @@ namespace RoboArm
             }
         }
 
-        private Texture2D MakeTex(int width, int height, Color col)
+        // =========================================================================
+        // MODERN THEMED IMGUI RENDERER (Matching User's Uploaded Style)
+        // =========================================================================
+
+        private Texture2D CreateRoundedRectTexture(int width, int height, int radius, Color fillColor,
+            bool roundTL = true, bool roundTR = true, bool roundBL = true, bool roundBR = true)
         {
-            Color[] pix = new Color[width * height];
-            for (int i = 0; i < pix.Length; i++) pix[i] = col;
-            Texture2D result = new Texture2D(width, height);
-            result.SetPixels(pix);
-            result.Apply();
-            return result;
+            Texture2D tex = new Texture2D(width, height, TextureFormat.RGBA32, false);
+            Color transparent = new Color(0, 0, 0, 0);
+
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    bool isTL = (x < radius && y >= height - radius && roundTL);
+                    bool isTR = (x >= width - radius && y >= height - radius && roundTR);
+                    bool isBL = (x < radius && y < radius && roundBL);
+                    bool isBR = (x >= width - radius && y < radius && roundBR);
+
+                    if (isTL || isTR || isBL || isBR)
+                    {
+                        int cx = (x < radius) ? radius : (width - radius - 1);
+                        int cy = (y < radius) ? radius : (height - radius - 1);
+
+                        float dist = Vector2.Distance(new Vector2(x, y), new Vector2(cx, cy));
+                        if (dist <= radius - 0.5f)
+                        {
+                            tex.SetPixel(x, y, fillColor);
+                        }
+                        else if (dist <= radius + 0.5f)
+                        {
+                            float a = Mathf.Clamp01(radius + 0.5f - dist) * fillColor.a;
+                            tex.SetPixel(x, y, new Color(fillColor.r, fillColor.g, fillColor.b, a));
+                        }
+                        else
+                        {
+                            tex.SetPixel(x, y, transparent);
+                        }
+                    }
+                    else
+                    {
+                        tex.SetPixel(x, y, fillColor);
+                    }
+                }
+            }
+            tex.Apply();
+            return tex;
         }
 
-        private void InitStyles()
+        private Texture2D CreateSolidTexture(int width, int height, Color col)
         {
-            if (stylesInitialized) return;
+            Texture2D tex = new Texture2D(width, height);
+            Color[] pix = new Color[width * height];
+            for (int i = 0; i < pix.Length; i++) pix[i] = col;
+            tex.SetPixels(pix);
+            tex.Apply();
+            return tex;
+        }
 
-            texDark = MakeTex(2, 2, new Color(0.10f, 0.12f, 0.16f, 0.95f));
-            texCard = MakeTex(2, 2, new Color(0.15f, 0.18f, 0.24f, 0.90f));
-            texActiveTab = MakeTex(2, 2, new Color(0.0f, 0.55f, 0.9f, 0.95f));
-            texAccent = MakeTex(2, 2, new Color(0.0f, 0.75f, 0.55f, 0.95f));
-            texDanger = MakeTex(2, 2, new Color(0.85f, 0.2f, 0.2f, 0.95f));
+        private void InitModernStyles()
+        {
+            if (stylesReady) return;
 
-            winStyle = new GUIStyle(GUI.skin.window);
-            winStyle.normal.background = texDark;
-            winStyle.focused.background = texDark;
-            winStyle.onNormal.background = texDark;
-            winStyle.border = new RectOffset(4, 4, 4, 4);
-            winStyle.padding = new RectOffset(12, 12, 8, 8);
+            // Semi-transparent frosted textures with 9-slice support
+            // Left sidebar: Dark translucent obsidian (rgba: 14, 18, 24, 0.90), rounded left corners only
+            texSidebar = CreateRoundedRectTexture(64, 64, 16, new Color(0.05f, 0.07f, 0.10f, 0.90f), roundTL: true, roundTR: false, roundBL: true, roundBR: false);
 
-            headerStyle = new GUIStyle(GUI.skin.label);
-            headerStyle.fontSize = 13;
-            headerStyle.fontStyle = FontStyle.Bold;
-            headerStyle.normal.textColor = Color.white;
+            // Main panel: Frosted milky glass (rgba: 242, 245, 249, 0.68), rounded right corners only
+            texMainPanel = CreateRoundedRectTexture(64, 64, 16, new Color(0.93f, 0.95f, 0.97f, 0.68f), roundTL: false, roundTR: true, roundBL: false, roundBR: true);
 
-            cardStyle = new GUIStyle(GUI.skin.box);
-            cardStyle.normal.background = texCard;
-            cardStyle.padding = new RectOffset(10, 10, 8, 8);
+            // Sleek dark-slate card/dropdown pills
+            texDropdownPill = CreateRoundedRectTexture(32, 32, 8, new Color(0.38f, 0.42f, 0.48f, 0.95f));
 
-            tabActiveStyle = new GUIStyle(GUI.skin.button);
-            tabActiveStyle.normal.background = texActiveTab;
-            tabActiveStyle.fontStyle = FontStyle.Bold;
-            tabActiveStyle.normal.textColor = Color.white;
+            // Column Header Divider line
+            texDivider = CreateSolidTexture(4, 4, new Color(0.72f, 0.77f, 0.84f, 0.75f));
 
-            tabInactiveStyle = new GUIStyle(GUI.skin.button);
-            tabInactiveStyle.normal.textColor = new Color(0.8f, 0.85f, 0.9f);
+            // Checkbox textures
+            texCheckmarkOn = CreateRoundedRectTexture(22, 22, 5, new Color(0.18f, 0.48f, 0.92f, 1f));
+            texCheckmarkOff = CreateRoundedRectTexture(22, 22, 5, new Color(0.72f, 0.76f, 0.82f, 0.90f));
 
-            labelBold = new GUIStyle(GUI.skin.label);
-            labelBold.fontStyle = FontStyle.Bold;
-            labelBold.normal.textColor = Color.white;
+            // Bottom Action Buttons
+            texBtnReset = CreateRoundedRectTexture(32, 32, 8, new Color(0.56f, 0.61f, 0.68f, 0.96f));
+            texBtnClose = CreateRoundedRectTexture(32, 32, 8, new Color(0.42f, 0.48f, 0.55f, 0.96f));
+            texBtnApply = CreateRoundedRectTexture(32, 32, 8, new Color(0.18f, 0.46f, 0.88f, 0.98f));
+            texBtnSave = CreateRoundedRectTexture(32, 32, 8, new Color(0.14f, 0.36f, 0.76f, 0.98f));
 
-            labelDim = new GUIStyle(GUI.skin.label);
-            labelDim.fontSize = 11;
-            labelDim.normal.textColor = new Color(0.7f, 0.75f, 0.82f);
+            // GUIStyles with 9-slice borders
+            styleSidebar = new GUIStyle();
+            styleSidebar.normal.background = texSidebar;
+            styleSidebar.border = new RectOffset(16, 0, 16, 16);
 
-            btnAccent = new GUIStyle(GUI.skin.button);
-            btnAccent.normal.background = texAccent;
-            btnAccent.fontStyle = FontStyle.Bold;
-            btnAccent.normal.textColor = Color.white;
+            styleMainPanel = new GUIStyle();
+            styleMainPanel.normal.background = texMainPanel;
+            styleMainPanel.border = new RectOffset(0, 16, 16, 16);
 
-            btnDanger = new GUIStyle(GUI.skin.button);
-            btnDanger.normal.background = texDanger;
-            btnDanger.fontStyle = FontStyle.Bold;
-            btnDanger.normal.textColor = Color.white;
+            styleDivider = new GUIStyle();
+            styleDivider.normal.background = texDivider;
 
-            stylesInitialized = true;
+            styleTabActive = new GUIStyle();
+            styleTabActive.fontSize = 15;
+            styleTabActive.fontStyle = FontStyle.Bold;
+            styleTabActive.normal.textColor = Color.white;
+            styleTabActive.alignment = TextAnchor.MiddleLeft;
+
+            styleTabInactive = new GUIStyle();
+            styleTabInactive.fontSize = 14;
+            styleTabInactive.normal.textColor = new Color(0.55f, 0.62f, 0.72f);
+            styleTabInactive.alignment = TextAnchor.MiddleLeft;
+
+            styleSectionHeader = new GUIStyle();
+            styleSectionHeader.fontSize = 16;
+            styleSectionHeader.fontStyle = FontStyle.Bold;
+            styleSectionHeader.normal.textColor = new Color(0.12f, 0.16f, 0.22f);
+
+            styleSubtext = new GUIStyle();
+            styleSubtext.fontSize = 12;
+            styleSubtext.fontStyle = FontStyle.Bold;
+            styleSubtext.normal.textColor = new Color(0.25f, 0.31f, 0.39f);
+
+            styleCardPill = new GUIStyle();
+            styleCardPill.normal.background = texDropdownPill;
+            styleCardPill.border = new RectOffset(8, 8, 8, 8);
+            styleCardPill.fontSize = 12;
+            styleCardPill.fontStyle = FontStyle.Bold;
+            styleCardPill.normal.textColor = Color.white;
+            styleCardPill.alignment = TextAnchor.MiddleCenter;
+
+            styleValueLabel = new GUIStyle();
+            styleValueLabel.fontSize = 12;
+            styleValueLabel.fontStyle = FontStyle.Bold;
+            styleValueLabel.normal.textColor = new Color(0.12f, 0.16f, 0.22f);
+            styleValueLabel.alignment = TextAnchor.MiddleRight;
+
+            styleCheckLabel = new GUIStyle();
+            styleCheckLabel.fontSize = 12;
+            styleCheckLabel.fontStyle = FontStyle.Bold;
+            styleCheckLabel.normal.textColor = new Color(0.16f, 0.22f, 0.30f);
+            styleCheckLabel.alignment = TextAnchor.MiddleLeft;
+
+            styleCheckIcon = new GUIStyle();
+            styleCheckIcon.fontSize = 13;
+            styleCheckIcon.fontStyle = FontStyle.Bold;
+            styleCheckIcon.normal.textColor = Color.white;
+            styleCheckIcon.alignment = TextAnchor.MiddleCenter;
+
+            styleBtnReset = new GUIStyle();
+            styleBtnReset.normal.background = texBtnReset;
+            styleBtnReset.border = new RectOffset(8, 8, 8, 8);
+            styleBtnReset.fontSize = 12;
+            styleBtnReset.fontStyle = FontStyle.Bold;
+            styleBtnReset.normal.textColor = Color.white;
+            styleBtnReset.alignment = TextAnchor.MiddleCenter;
+
+            styleBtnClose = new GUIStyle();
+            styleBtnClose.normal.background = texBtnClose;
+            styleBtnClose.border = new RectOffset(8, 8, 8, 8);
+            styleBtnClose.fontSize = 12;
+            styleBtnClose.fontStyle = FontStyle.Bold;
+            styleBtnClose.normal.textColor = Color.white;
+            styleBtnClose.alignment = TextAnchor.MiddleCenter;
+
+            styleBtnApply = new GUIStyle();
+            styleBtnApply.normal.background = texBtnApply;
+            styleBtnApply.border = new RectOffset(8, 8, 8, 8);
+            styleBtnApply.fontSize = 12;
+            styleBtnApply.fontStyle = FontStyle.Bold;
+            styleBtnApply.normal.textColor = Color.white;
+            styleBtnApply.alignment = TextAnchor.MiddleCenter;
+
+            styleBtnSave = new GUIStyle();
+            styleBtnSave.normal.background = texBtnSave;
+            styleBtnSave.border = new RectOffset(8, 8, 8, 8);
+            styleBtnSave.fontSize = 12;
+            styleBtnSave.fontStyle = FontStyle.Bold;
+            styleBtnSave.normal.textColor = Color.white;
+            styleBtnSave.alignment = TextAnchor.MiddleCenter;
+
+            stylesReady = true;
         }
 
         void OnGUI()
@@ -425,377 +549,434 @@ namespace RoboArm
                 }
             }
 
+            InitModernStyles();
+
             if (!showDashboard)
             {
-                if (GUI.Button(new Rect(20, 20, 150, 34), "📊 Open Robot Center"))
+                // Sleek Open Pill in top left
+                if (GUI.Button(new Rect(25, 25, 140, 36), "⚙️ Open Controls", styleBtnApply))
                 {
                     showDashboard = true;
                 }
                 return;
             }
 
-            InitStyles();
+            // Calculate responsive dimensions matching uploaded image
+            float panelW = Mathf.Clamp(Screen.width * 0.78f, 750f, 960f);
+            float panelH = Mathf.Clamp(Screen.height * 0.82f, 480f, 580f);
+            float panelX = (Screen.width - panelW) * 0.5f;
+            float panelY = (Screen.height - panelH) * 0.5f;
 
-            // Minimized Floating Pill Mode
-            if (isMinimized)
-            {
-                GUI.Box(new Rect(20, 20, 360, 48), "", cardStyle);
-                GUILayout.BeginArea(new Rect(25, 26, 350, 40));
-                GUILayout.BeginHorizontal();
-                DrawStatusBadge(false);
-                if (GUILayout.Button("Expand ↗", GUILayout.Width(75))) isMinimized = false;
-                GUILayout.EndHorizontal();
-                GUILayout.EndArea();
-                return;
-            }
+            float sidebarW = 160f;
+            float mainW = panelW - sidebarW;
 
-            // Full Master Dashboard Window
-            windowRect = GUI.Window(999, windowRect, DrawDashboardWindow, "🤖 EB-15 ROBOTIC ARM — DIGITAL TWIN DASHBOARD", winStyle);
-        }
+            // Draw Dark Frosted Left Sidebar
+            GUI.Box(new Rect(panelX, panelY, sidebarW, panelH), "", styleSidebar);
 
-        private void DrawDashboardWindow(int windowID)
-        {
-            // Top Window Bar (Status Badge & Minimize Button)
-            GUILayout.BeginHorizontal();
-            DrawStatusBadge(true);
-            GUILayout.FlexibleSpace();
-            if (GUILayout.Button(ghostArm != null && ghostArm.isVisible ? "👻 Ghost: ON" : "👻 Ghost: OFF", GUILayout.Width(95)))
-            {
-                if (ghostArm != null) ghostArm.SetVisible(!ghostArm.isVisible);
-            }
-            if (GUILayout.Button("-", GUILayout.Width(26))) isMinimized = true;
-            if (GUILayout.Button("✕", GUILayout.Width(26))) showDashboard = false;
-            GUILayout.EndHorizontal();
+            // Draw Light Frosted Glass Main Body (transparent enough for roboarm behind!)
+            GUI.Box(new Rect(panelX + sidebarW, panelY, mainW, panelH), "", styleMainPanel);
 
-            GUILayout.Space(6);
+            // -------------------------------------------------------------
+            // SIDEBAR CONTENT
+            // -------------------------------------------------------------
+            GUILayout.BeginArea(new Rect(panelX + 18, panelY + 30, sidebarW - 25, panelH - 50));
 
-            // Tab Navigation Bar
-            string[] tabs = new string[] { "🎮 Controls", "🌐 Network & IP", "📐 Presets", "ℹ️ Guide" };
-            GUILayout.BeginHorizontal();
+            string[] tabs = new string[] { "Controls", "Network", "Presets", "Guide" };
             for (int i = 0; i < tabs.Length; i++)
             {
-                GUIStyle style = (i == selectedTab) ? tabActiveStyle : tabInactiveStyle;
-                if (GUILayout.Button(tabs[i], style, GUILayout.Height(30)))
+                bool isSelected = (i == selectedSidebarTab);
+                GUILayout.BeginHorizontal();
+                if (isSelected)
                 {
-                    selectedTab = i;
+                    // Cyan/Blue diamond indicator matching reference image
+                    GUI.color = new Color(0.18f, 0.52f, 1.0f);
+                    GUILayout.Label("◆", styleTabActive, GUILayout.Width(16));
+                    GUI.color = Color.white;
+                    if (GUILayout.Button(tabs[i], styleTabActive, GUILayout.Height(38))) selectedSidebarTab = i;
                 }
-            }
-            GUILayout.EndHorizontal();
-
-            GUILayout.Space(8);
-
-            scrollPos = GUILayout.BeginScrollView(scrollPos);
-
-            switch (selectedTab)
-            {
-                case 0: DrawControlsTab(); break;
-                case 1: DrawNetworkTab(); break;
-                case 2: DrawPresetsTab(); break;
-                case 3: DrawGuideTab(); break;
+                else
+                {
+                    GUILayout.Space(20);
+                    if (GUILayout.Button(tabs[i], styleTabInactive, GUILayout.Height(38))) selectedSidebarTab = i;
+                }
+                GUILayout.EndHorizontal();
+                GUILayout.Space(6);
             }
 
-            GUILayout.EndScrollView();
-
-            GUI.DragWindow(new Rect(0, 0, 10000, 30));
-        }
-
-        private void DrawStatusBadge(bool showDetail)
-        {
-            Color prevColor = GUI.color;
-            if (isHardwareEncoderLive)
-            {
-                GUI.color = new Color(0.2f, 1f, 0.4f);
-                GUILayout.Label(showDetail ? "● REAL HARDWARE ENCODERS LIVE (50 Hz)" : "● ENCODERS LIVE", labelBold);
-            }
-            else if (rosBridge != null && rosBridge.IsConnected)
-            {
-                GUI.color = new Color(0.3f, 0.85f, 1f);
-                GUILayout.Label(showDetail ? "● ROS 2 CONNECTED (Telemetry Active)" : "● ROS 2 ACTIVE", labelBold);
-            }
-            else
-            {
-                GUI.color = new Color(1f, 0.7f, 0.2f);
-                GUILayout.Label(showDetail ? "● VELOCITY-MATCHED SIMULATION (Offline)" : "● SIMULATION", labelBold);
-            }
-            GUI.color = prevColor;
-        }
-
-        private void DrawControlsTab()
-        {
-            // Interactive banner explaining the twin concept
-            GUILayout.BeginVertical(cardStyle);
-            GUILayout.Label("💡 DIGITAL TWIN CONCEPT", labelBold);
-            GUILayout.Label("• 👻 Cyan Ghost: Commanded Target Pose (Drag sliders below to set goal)", labelDim);
-            GUILayout.Label("• 🦾 Solid Arm: Physical Robot (Tracks real optical encoders at hardware speed)", labelDim);
-            GUILayout.EndVertical();
-
-            GUILayout.Space(6);
-
-            // Joint Sliders with anatomical explanations
-            float prevJ1 = targetJoint1;
-            float prevJ2 = targetJoint2;
-            float prevJ3 = targetJoint3;
-            float prevWrist = targetWrist;
-            float prevGrip = targetGripper;
-
-            DrawJointCard("Joint 1: Base Rotate (Yaw)", "Rotates the entire arm left / right (-180° to +180°)", ref targetJoint1, currentJoint1, -180f, 180f, "°");
-            DrawJointCard("Joint 2: Shoulder Reach (Pitch)", "Tilts the main upper arm forward / back (-90° to +90°)", ref targetJoint2, currentJoint2, -90f, 90f, "°");
-            DrawJointCard("Joint 3: Elbow Arm (Pitch)", "Raises / lowers the forearm (-154.7° to +154.7°)", ref targetJoint3, currentJoint3, -154.7f, 154.7f, "°");
-            DrawJointCard("Joint 4: Wrist Tilt (Pitch)", "Angles the end-effector gripper up / down (-90° to +90°)", ref targetWrist, currentWrist, -90f, 90f, "°");
-
-            // Gripper
-            GUILayout.BeginVertical(cardStyle);
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("Joint 5: Parallel Gripper", labelBold);
             GUILayout.FlexibleSpace();
-            GUILayout.Label($"Target: {(targetGripper * 100f):F0}% | Real: {(currentGripper * 100f):F0}%", labelDim);
-            GUILayout.EndHorizontal();
-            GUILayout.Label("Opens and closes the dual parallel fingers (0% Closed, 100% Fully Open)", labelDim);
-            targetGripper = GUILayout.HorizontalSlider(targetGripper, 0f, 1f);
-            GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Pinch Closed (0%)")) targetGripper = 0f;
-            if (GUILayout.Button("Half (50%)")) targetGripper = 0.5f;
-            if (GUILayout.Button("Fully Open (100%)")) targetGripper = 1f;
-            GUILayout.EndHorizontal();
-            GUILayout.EndVertical();
 
-            // Check if user moved any slider
-            bool changed = Mathf.Abs(targetJoint1 - prevJ1) > 0.01f ||
-                           Mathf.Abs(targetJoint2 - prevJ2) > 0.01f ||
-                           Mathf.Abs(targetJoint3 - prevJ3) > 0.01f ||
-                           Mathf.Abs(targetWrist - prevWrist) > 0.01f ||
-                           Mathf.Abs(targetGripper - prevGrip) > 0.005f;
+            // Bottom brand logo
+            GUILayout.Label("EB-15", styleTabActive);
+            GUILayout.Label("Digital Twin UI", styleSubtext);
 
-            if (changed && rosBridge != null && rosBridge.streamCommandsToRos)
+            GUILayout.EndArea();
+
+            // -------------------------------------------------------------
+            // MAIN BODY CONTENT (3 Columns + Bottom Action Bar)
+            // -------------------------------------------------------------
+            float contentMargin = 22f;
+            float contentW = mainW - (contentMargin * 2);
+            float bottomBarH = 46f;
+            float contentH = panelH - (contentMargin * 2) - bottomBarH;
+
+            GUILayout.BeginArea(new Rect(panelX + sidebarW + contentMargin, panelY + contentMargin, contentW, contentH));
+
+            switch (selectedSidebarTab)
             {
-                rosBridge.SendTargetPoseToRos(targetJoint1, targetJoint2, targetJoint3, targetWrist, targetGripper);
+                case 0: DrawModernControlsTab(contentW); break;
+                case 1: DrawModernNetworkTab(contentW); break;
+                case 2: DrawModernPresetsTab(contentW); break;
+                case 3: DrawModernGuideTab(contentW); break;
             }
 
-            GUILayout.Space(8);
+            GUILayout.EndArea();
 
-            // Action Toolbar
-            GUILayout.BeginVertical(cardStyle);
-            GUILayout.Label("⚡ DISPATCH & SYNC CONTROLS", labelBold);
+            // -------------------------------------------------------------
+            // BOTTOM ACTION BAR (Matching Image Buttons)
+            // -------------------------------------------------------------
+            float btnY = panelY + panelH - bottomBarH - 12;
+            float btnW = 95f;
+            float btnGap = 12f;
+            float rightEdge = panelX + panelW - contentMargin;
 
-            GUILayout.BeginHorizontal();
-            if (GUILayout.Button("🧲 Snap Ghost to Arm", GUILayout.Height(32)))
+            // Buttons: RESET ALL, CLOSE, APPLY, SAVE
+            if (GUI.Button(new Rect(rightEdge - (btnW * 4 + btnGap * 3), btnY, btnW, 32), "RESET ALL", styleBtnReset))
             {
                 SnapGhostToPhysicalPose();
             }
-            if (GUILayout.Button("🚀 Send Goal Now", btnAccent, GUILayout.Height(32)))
+
+            if (GUI.Button(new Rect(rightEdge - (btnW * 3 + btnGap * 2), btnY, btnW, 32), "CLOSE", styleBtnClose))
+            {
+                showDashboard = false;
+            }
+
+            if (GUI.Button(new Rect(rightEdge - (btnW * 2 + btnGap), btnY, btnW, 32), "APPLY", styleBtnApply))
             {
                 if (rosBridge != null)
                 {
                     rosBridge.SendTargetPoseToRos(targetJoint1, targetJoint2, targetJoint3, targetWrist, targetGripper);
                 }
             }
-            GUILayout.EndHorizontal();
+
+            if (GUI.Button(new Rect(rightEdge - btnW, btnY, btnW, 32), "SAVE", styleBtnSave))
+            {
+                SnapGhostToPhysicalPose();
+                if (rosBridge != null)
+                {
+                    rosBridge.SendTargetPoseToRos(targetJoint1, targetJoint2, targetJoint3, targetWrist, targetGripper);
+                }
+            }
+        }
+
+        private void DrawColumnHeader(string title)
+        {
+            GUILayout.Label(title, styleSectionHeader);
+            GUILayout.Space(2);
+            GUILayout.Box("", styleDivider, GUILayout.Height(1), GUILayout.ExpandWidth(true));
+            GUILayout.Space(8);
+        }
+
+        private void DrawModernControlsTab(float totalW)
+        {
+            float colW = (totalW - 30f) / 3f;
 
             GUILayout.BeginHorizontal();
+
+            // ==========================================
+            // COLUMN 1: JOINT TARGETS (Ghost Preview)
+            // ==========================================
+            GUILayout.BeginVertical(GUILayout.Width(colW));
+            DrawColumnHeader("Joint Targets");
+
+            DrawStyledSlider("Joint 1 (Base)", ref targetJoint1, -180f, 180f, "°");
+            DrawStyledSlider("Joint 2 (Shoulder)", ref targetJoint2, -90f, 90f, "°");
+            DrawStyledSlider("Joint 3 (Elbow)", ref targetJoint3, -154.7f, 154.7f, "°");
+            DrawStyledSlider("Joint 4 (Wrist)", ref targetWrist, -90f, 90f, "°");
+            DrawStyledSlider("Gripper Stroke", ref targetGripper, 0f, 1f, "%", true);
+
+            GUILayout.EndVertical();
+
+            GUILayout.Space(15);
+
+            // ==========================================
+            // COLUMN 2: HARDWARE TWIN & VELOCITY
+            // ==========================================
+            GUILayout.BeginVertical(GUILayout.Width(colW));
+            DrawColumnHeader("Physical Twin");
+
+            // Encoder Pill Display
+            GUILayout.Box(isHardwareEncoderLive ? "● HARDWARE ENCODERS LIVE" : "● VELOCITY SIMULATION", styleCardPill, GUILayout.Height(30));
+            GUILayout.Space(6);
+
+            DrawReadoutCard("Real Joint 1", $"{currentJoint1:F1}°", $"Lag: {Mathf.Abs(targetJoint1 - currentJoint1):F1}°");
+            DrawReadoutCard("Real Joint 2", $"{currentJoint2:F1}°", $"Lag: {Mathf.Abs(targetJoint2 - currentJoint2):F1}°");
+            DrawReadoutCard("Real Joint 3", $"{currentJoint3:F1}°", $"Lag: {Mathf.Abs(targetJoint3 - currentJoint3):F1}°");
+            DrawReadoutCard("Real Wrist", $"{currentWrist:F1}°", $"Lag: {Mathf.Abs(targetWrist - currentWrist):F1}°");
+            DrawReadoutCard("Real Gripper", $"{(currentGripper * 100f):F0}%", "");
+
+            GUILayout.EndVertical();
+
+            GUILayout.Space(15);
+
+            // ==========================================
+            // COLUMN 3: TOGGLES & QUICK CONTROLS
+            // ==========================================
+            GUILayout.BeginVertical(GUILayout.Width(colW));
+            DrawColumnHeader("Sync & Tools");
+
+            if (ghostArm != null)
+            {
+                bool ghostVis = DrawStyledCheckbox("Hologram Ghost Preview", ghostArm.isVisible);
+                if (ghostVis != ghostArm.isVisible) ghostArm.SetVisible(ghostVis);
+            }
+
             if (rosBridge != null)
             {
-                rosBridge.streamCommandsToRos = GUILayout.Toggle(rosBridge.streamCommandsToRos, " Auto-Stream Sliders to Real Arm");
+                rosBridge.streamCommandsToRos = DrawStyledCheckbox("Auto-Stream to Real Robot", rosBridge.streamCommandsToRos);
             }
-            if (GUILayout.Button("🛑 Emergency Hold", btnDanger, GUILayout.Width(140)))
+
+            autoDemo = DrawStyledCheckbox("Waypoint Demo Active", autoDemo);
+
+            GUILayout.Space(12);
+            DrawColumnHeader("Gripper Tools");
+
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Pinch 0%", styleBtnReset, GUILayout.Height(28))) targetGripper = 0f;
+            if (GUILayout.Button("Half 50%", styleBtnReset, GUILayout.Height(28))) targetGripper = 0.5f;
+            if (GUILayout.Button("Open 100%", styleBtnReset, GUILayout.Height(28))) targetGripper = 1f;
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(12);
+            if (GUILayout.Button("🛑 EMERGENCY HOLD", styleBtnClose, GUILayout.Height(32)))
             {
                 EmergencyHold();
             }
-            GUILayout.EndHorizontal();
-
-            // Tracking delta / lag
-            float lag = Mathf.Abs(targetJoint1 - currentJoint1) +
-                        Mathf.Abs(targetJoint2 - currentJoint2) +
-                        Mathf.Abs(targetJoint3 - currentJoint3) +
-                        Mathf.Abs(targetWrist - currentWrist);
-            GUILayout.Label($"Total Goal-to-Hardware Delta: {lag:F1}° (Physical arm catching up)", labelDim);
 
             GUILayout.EndVertical();
+
+            GUILayout.EndHorizontal();
         }
 
-        private void DrawJointCard(string title, string description, ref float targetVal, float currentVal, float min, float max, string unit)
+        private void DrawStyledSlider(string label, ref float val, float min, float max, string unit, bool isPercent = false)
         {
-            GUILayout.BeginVertical(cardStyle);
             GUILayout.BeginHorizontal();
-            GUILayout.Label(title, labelBold);
+            GUILayout.Label(label, styleSubtext);
             GUILayout.FlexibleSpace();
-            float lag = Mathf.Abs(targetVal - currentVal);
-            Color lagColor = lag > 1.0f ? new Color(1f, 0.75f, 0.3f) : new Color(0.4f, 1f, 0.5f);
-            Color old = GUI.color;
-            GUI.color = lagColor;
-            GUILayout.Label($"Goal: {targetVal:F1}{unit} | Real: {currentVal:F1}{unit}", labelBold);
-            GUI.color = old;
+            float displayVal = isPercent ? (val * 100f) : val;
+            GUILayout.Label($"{displayVal:F1}{unit}", styleValueLabel);
             GUILayout.EndHorizontal();
 
-            GUILayout.Label(description, labelDim);
-
-            GUILayout.BeginHorizontal();
-            if (GUILayout.Button("-5°", GUILayout.Width(38))) targetVal = Mathf.Clamp(targetVal - 5f, min, max);
-            if (GUILayout.Button("-1°", GUILayout.Width(38))) targetVal = Mathf.Clamp(targetVal - 1f, min, max);
-            targetVal = GUILayout.HorizontalSlider(targetVal, min, max);
-            if (GUILayout.Button("+1°", GUILayout.Width(38))) targetVal = Mathf.Clamp(targetVal + 1f, min, max);
-            if (GUILayout.Button("+5°", GUILayout.Width(38))) targetVal = Mathf.Clamp(targetVal + 5f, min, max);
-            GUILayout.EndHorizontal();
-
-            GUILayout.EndVertical();
-            GUILayout.Space(2);
+            val = GUILayout.HorizontalSlider(val, min, max);
+            GUILayout.Space(5);
         }
 
-        private void DrawNetworkTab()
+        private void DrawReadoutCard(string title, string value, string lagText)
         {
-            GUILayout.BeginVertical(cardStyle);
-            GUILayout.Label("🌐 ROS 2 REMOTE / LOCAL CONNECTION", labelBold);
-            GUILayout.Label("Configure connection when the ROS 2 driver is running on another PC, laptop, or inside WSL2.", labelDim);
-            GUILayout.EndVertical();
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(title, styleSubtext);
+            GUILayout.FlexibleSpace();
+            if (!string.IsNullOrEmpty(lagText))
+            {
+                GUI.color = new Color(0.18f, 0.46f, 0.88f);
+                GUILayout.Label(lagText, styleSubtext);
+                GUI.color = Color.white;
+                GUILayout.Space(8);
+            }
+            GUILayout.Label(value, styleValueLabel);
+            GUILayout.EndHorizontal();
+            GUILayout.Space(4);
+        }
 
+        private bool DrawStyledCheckbox(string label, bool current)
+        {
+            GUILayout.BeginHorizontal();
+            Rect boxRect = GUILayoutUtility.GetRect(20, 20, GUILayout.Width(20), GUILayout.Height(20));
+            GUI.DrawTexture(boxRect, current ? texCheckmarkOn : texCheckmarkOff);
+            if (current)
+            {
+                GUI.Label(boxRect, "✔", styleCheckIcon);
+            }
+            GUILayout.Space(8);
+            bool clicked = GUILayout.Button(label, styleCheckLabel);
+            GUILayout.EndHorizontal();
             GUILayout.Space(6);
 
-            GUILayout.BeginVertical(cardStyle);
-            GUILayout.Label("Remote ROS 2 Machine IP Address:", labelBold);
-            inputRosHost = GUILayout.TextField(inputRosHost, 40);
+            if (Event.current.type == EventType.MouseDown && boxRect.Contains(Event.current.mousePosition))
+            {
+                clicked = true;
+                Event.current.Use();
+            }
 
-            GUILayout.Label("Quick IP Presets:", labelDim);
+            return clicked ? !current : current;
+        }
+
+        private void DrawModernNetworkTab(float totalW)
+        {
+            float colW = (totalW - 30f) / 3f;
+
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button("🖥️ Localhost (127.0.0.1)")) inputRosHost = "127.0.0.1";
-            if (GUILayout.Button("🐧 WSL2 (127.0.0.1)")) inputRosHost = "127.0.0.1";
-            if (GUILayout.Button("🌐 Clear IP")) inputRosHost = "";
-            GUILayout.EndHorizontal();
 
-            GUILayout.Space(8);
-            GUILayout.BeginHorizontal();
-            GUILayout.BeginVertical();
-            GUILayout.Label("Incoming Port (Unity Listen):", labelBold);
-            inputListenPort = GUILayout.TextField(inputListenPort);
-            GUILayout.EndVertical();
-
-            GUILayout.BeginVertical();
-            GUILayout.Label("Outgoing Port (ROS Listen):", labelBold);
-            inputRosPort = GUILayout.TextField(inputRosPort);
-            GUILayout.EndVertical();
-            GUILayout.EndHorizontal();
+            // Column 1: Remote Host IP
+            GUILayout.BeginVertical(GUILayout.Width(colW));
+            DrawColumnHeader("ROS 2 Remote Host");
+            GUILayout.Label("Linux PC / Robot IP Address:", styleSubtext);
+            inputRosHost = GUILayout.TextField(inputRosHost, GUILayout.Height(28));
 
             GUILayout.Space(10);
+            GUILayout.Label("Quick IP Presets", styleSubtext);
+            if (GUILayout.Button("Localhost (127.0.0.1)", styleCardPill, GUILayout.Height(28))) inputRosHost = "127.0.0.1";
+            GUILayout.Space(4);
+            if (GUILayout.Button("WSL2 (127.0.0.1)", styleCardPill, GUILayout.Height(28))) inputRosHost = "127.0.0.1";
+            GUILayout.EndVertical();
 
-            if (GUILayout.Button("🔄 Reconnect & Apply Network Settings", btnAccent, GUILayout.Height(36)))
+            GUILayout.Space(15);
+
+            // Column 2: Ports
+            GUILayout.BeginVertical(GUILayout.Width(colW));
+            DrawColumnHeader("UDP Socket Ports");
+
+            GUILayout.Label("Incoming Telemetry Port (Unity Listen):", styleSubtext);
+            inputListenPort = GUILayout.TextField(inputListenPort, GUILayout.Height(28));
+
+            GUILayout.Space(8);
+            GUILayout.Label("Outgoing Command Port (ROS Listen):", styleSubtext);
+            inputRosPort = GUILayout.TextField(inputRosPort, GUILayout.Height(28));
+
+            GUILayout.Space(12);
+            if (GUILayout.Button("🔄 Reconnect Sockets", styleBtnApply, GUILayout.Height(34)))
             {
                 if (int.TryParse(inputListenPort, out int inP) && int.TryParse(inputRosPort, out int outP))
                 {
                     if (rosBridge != null)
                     {
                         rosBridge.Reconnect(inputRosHost, inP, outP);
-                        networkStatusMsg = $"✓ Successfully rebound UDP sockets: Host={inputRosHost}, Ports={inP}/{outP}";
+                        networkStatusMsg = $"✓ Connected to {inputRosHost}:{outP}";
                     }
                 }
                 else
                 {
-                    networkStatusMsg = "❌ Error: Port numbers must be valid integers.";
+                    networkStatusMsg = "❌ Error: Port must be an integer.";
                 }
             }
 
             if (!string.IsNullOrEmpty(networkStatusMsg))
             {
                 GUILayout.Space(4);
-                GUILayout.Label(networkStatusMsg, labelDim);
+                GUILayout.Label(networkStatusMsg, styleSubtext);
             }
 
             GUILayout.EndVertical();
 
-            GUILayout.Space(6);
+            GUILayout.Space(15);
 
-            // Live Diagnostics Card
-            GUILayout.BeginVertical(cardStyle);
-            GUILayout.Label("📊 LIVE NETWORK DIAGNOSTICS", labelBold);
+            // Column 3: Live Diagnostics
+            GUILayout.BeginVertical(GUILayout.Width(colW));
+            DrawColumnHeader("Network Diagnostics");
+
             if (rosBridge != null)
             {
-                GUILayout.Label($"• Target ROS Host: {rosBridge.rosHost}:{rosBridge.rosPort}", labelDim);
-                GUILayout.Label($"• Unity Listen Socket: 0.0.0.0:{rosBridge.listenPort} (UDP)", labelDim);
-                GUILayout.Label($"• Telemetry Receive Rate: {rosBridge.PacketsPerSecond:F1} packets/sec", labelDim);
-                GUILayout.Label($"• Total Packets Received: {rosBridge.TotalPacketsReceived}", labelDim);
-                GUILayout.Label($"• Last Packet Received: {rosBridge.LastPacketTimestamp}", labelDim);
-                GUILayout.Label($"• Real Encoders Active: {(rosBridge.IsReceivingRealEncoders ? "YES (Hardware Stream)" : "Awaiting Hardware Feedback")}", labelDim);
+                DrawReadoutCard("Status", rosBridge.IsConnected ? "Connected" : "Listening", "");
+                DrawReadoutCard("Telemetry Rate", $"{rosBridge.PacketsPerSecond:F1} Hz", "");
+                DrawReadoutCard("Packets Received", $"{rosBridge.TotalPacketsReceived}", "");
+                DrawReadoutCard("Encoders", rosBridge.IsReceivingRealEncoders ? "Active" : "Awaiting", "");
+                DrawReadoutCard("Last Packet", rosBridge.LastPacketTimestamp, "");
             }
+
             GUILayout.EndVertical();
 
-            GUILayout.Space(6);
-            GUILayout.BeginVertical(cardStyle);
-            GUILayout.Label("💡 REMOTE HOST COMMAND TIP", labelBold);
-            GUILayout.Label("If ROS is running on another Linux PC, start it with your Windows PC's IP:", labelDim);
-            GUILayout.TextArea("ros2 launch eb15_driver hardware_control.launch.py unity_ip:=<THIS_PC_IP>");
-            GUILayout.EndVertical();
+            GUILayout.EndHorizontal();
         }
 
-        private void DrawPresetsTab()
+        private void DrawModernPresetsTab(float totalW)
         {
-            GUILayout.BeginVertical(cardStyle);
-            GUILayout.Label("🎯 1-CLICK POSE PRESETS", labelBold);
-            GUILayout.Label("Click any preset to command the Ghost preview and send goal to the arm.", labelDim);
+            float colW = (totalW - 30f) / 3f;
 
-            GUILayout.Space(6);
-            if (GUILayout.Button("🏠 Home Position (Upright Standby)", GUILayout.Height(32)))
+            GUILayout.BeginHorizontal();
+
+            // Column 1: Core Poses
+            GUILayout.BeginVertical(GUILayout.Width(colW));
+            DrawColumnHeader("Standard Robot Poses");
+
+            if (GUILayout.Button("🏠 Home (Upright)", styleCardPill, GUILayout.Height(32)))
                 ApplyPresetPose(0f, 0f, 0f, 0f, 0.5f);
+            GUILayout.Space(4);
 
-            if (GUILayout.Button("📦 Reach Forward Right (Preparation)", GUILayout.Height(32)))
+            if (GUILayout.Button("📦 Reach Forward", styleCardPill, GUILayout.Height(32)))
                 ApplyPresetPose(45f, -35f, 50f, 25f, 1f);
+            GUILayout.Space(4);
 
-            if (GUILayout.Button("🎯 Pick Object (Grip Closed)", GUILayout.Height(32)))
+            if (GUILayout.Button("🎯 Pick Object", styleCardPill, GUILayout.Height(32)))
                 ApplyPresetPose(45f, -55f, 75f, 35f, 0f);
-
-            if (GUILayout.Button("⬆️ Lift Object Upward", GUILayout.Height(32)))
-                ApplyPresetPose(45f, -25f, 35f, 15f, 0f);
-
-            if (GUILayout.Button("⬅️ Swing & Place Target (Left)", GUILayout.Height(32)))
-                ApplyPresetPose(-50f, -55f, 75f, -35f, 1f);
-
-            if (GUILayout.Button("🔄 Retract to Safe Standby", GUILayout.Height(32)))
-                ApplyPresetPose(-50f, -10f, 20f, 0f, 1f);
-
-            if (GUILayout.Button("📐 Zero Calibration Pose (All 0°)", GUILayout.Height(32)))
-                ApplyPresetPose(0f, 0f, 0f, 0f, 0f);
-
             GUILayout.EndVertical();
 
-            GUILayout.Space(6);
+            GUILayout.Space(15);
 
-            GUILayout.BeginVertical(cardStyle);
-            GUILayout.Label("▶️ AUTONOMOUS WAYPOINT SEQUENCE", labelBold);
-            GUILayout.Label("Cycles the arm through a continuous automated pick-and-place sequence.", labelDim);
+            // Column 2: Manipulation Poses
+            GUILayout.BeginVertical(GUILayout.Width(colW));
+            DrawColumnHeader("Place & Zero");
 
+            if (GUILayout.Button("⬆️ Lift Object Up", styleCardPill, GUILayout.Height(32)))
+                ApplyPresetPose(45f, -25f, 35f, 15f, 0f);
             GUILayout.Space(4);
-            if (GUILayout.Button(autoDemo ? "⏸️ Pause Demo" : "▶️ Start Continuous Demo", autoDemo ? btnDanger : btnAccent, GUILayout.Height(34)))
+
+            if (GUILayout.Button("⬅️ Place Target Left", styleCardPill, GUILayout.Height(32)))
+                ApplyPresetPose(-50f, -55f, 75f, -35f, 1f);
+            GUILayout.Space(4);
+
+            if (GUILayout.Button("📐 Zero Calibration", styleCardPill, GUILayout.Height(32)))
+                ApplyPresetPose(0f, 0f, 0f, 0f, 0f);
+            GUILayout.EndVertical();
+
+            GUILayout.Space(15);
+
+            // Column 3: Automated Demo
+            GUILayout.BeginVertical(GUILayout.Width(colW));
+            DrawColumnHeader("Automated Sequences");
+
+            if (GUILayout.Button(autoDemo ? "⏸️ Pause Demo" : "▶️ Play Waypoint Demo", styleBtnApply, GUILayout.Height(34)))
             {
                 autoDemo = !autoDemo;
             }
 
-            GUILayout.Label($"Demo Speed Multiplier: {demoSpeed:F2}x", labelDim);
+            GUILayout.Space(10);
+            GUILayout.Label($"Speed Multiplier: {demoSpeed:F2}x", styleSubtext);
             demoSpeed = GUILayout.HorizontalSlider(demoSpeed, 0.2f, 2.0f);
             GUILayout.EndVertical();
+
+            GUILayout.EndHorizontal();
         }
 
-        private void DrawGuideTab()
+        private void DrawModernGuideTab(float totalW)
         {
-            GUILayout.BeginVertical(cardStyle);
-            GUILayout.Label("📖 USER GUIDE & SYSTEM REFERENCE", labelBold);
-            GUILayout.Space(4);
+            float colW = (totalW - 30f) / 3f;
 
-            GUILayout.Label("1. Ghost vs Physical Twin", labelBold);
-            GUILayout.Label("• The Cyan Holographic Ghost shows where you are instructing the arm to move.\n" +
-                            "• The Solid Arm reflects where the robot arm actually is right now in the real world, based on optical encoder feedback.", labelDim);
+            GUILayout.BeginHorizontal();
 
-            GUILayout.Space(4);
-            GUILayout.Label("2. Velocity-Matched Physics", labelBold);
-            GUILayout.Label("The robot arm in Unity enforces the exact same physical stepper motor speeds (57.3°/s base, 45.8°/s shoulder, 57.3°/s elbow) so simulation time perfectly equals real-world movement time.", labelDim);
-
-            GUILayout.Space(4);
-            GUILayout.Label("3. Remote PC Setup", labelBold);
-            GUILayout.Label("Go to the 'Network & IP' tab, enter the remote Linux machine's IP, and click 'Apply & Reconnect'. The UDP socket will connect without restarting Unity.", labelDim);
-
-            GUILayout.Space(4);
-            GUILayout.Label("4. Keyboard Hotkeys", labelBold);
-            GUILayout.Label("• Tab: Hide / Show Dashboard\n" +
-                            "• G: Toggle Ghost Hologram Visibility\n" +
-                            "• Space: Play / Pause Waypoint Demo\n" +
-                            "• H: Snap to Home Position", labelDim);
-
+            GUILayout.BeginVertical(GUILayout.Width(colW));
+            DrawColumnHeader("Digital Twin Flow");
+            GUILayout.Label("• Cyan Ghost: Represents the target pose set by the user.\n\n" +
+                            "• Solid Arm: Driven strictly by physical optical encoders streamed from the Arduino at real-world motor speeds.", styleSubtext);
             GUILayout.EndVertical();
+
+            GUILayout.Space(15);
+
+            GUILayout.BeginVertical(GUILayout.Width(colW));
+            DrawColumnHeader("Remote ROS Setup");
+            GUILayout.Label("When running on another Linux PC or robot controller:\n\n" +
+                            "ros2 launch eb15_driver hardware_control.launch.py unity_ip:=<THIS_PC_IP>", styleSubtext);
+            GUILayout.EndVertical();
+
+            GUILayout.Space(15);
+
+            GUILayout.BeginVertical(GUILayout.Width(colW));
+            DrawColumnHeader("Hotkeys");
+            GUILayout.Label("• Tab: Hide / Show Dashboard\n" +
+                            "• G: Toggle Hologram Ghost Preview\n" +
+                            "• H: Snap Directly to Home\n" +
+                            "• Space: Play / Pause Demo", styleSubtext);
+            GUILayout.EndVertical();
+
+            GUILayout.EndHorizontal();
         }
     }
 }
