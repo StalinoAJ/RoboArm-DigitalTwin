@@ -9,14 +9,19 @@ namespace RoboArm
 {
     /// <summary>
     /// High-performance UDP Bridge connecting Unity Digital Twin with ROS 2 (eb15_ws).
-    /// - Telemetry In (Real Arm -> Unity): Receives measured encoder values from /eb15/measured_joint_states
+    /// - Telemetry In (Real Arm -> Unity): Receives measured optical encoder values from /eb15/measured_joint_states
     ///   and streams them directly to the Solid Arm Digital Twin.
     /// - Teleoperation Out (Unity Ghost Preview -> Real Arm): Sends commanded target goals from sliders
     ///   to /eb15/joint_commands and /eb15/target_joint_states.
+    /// - Supports dynamic runtime IP/port reconfiguration to connect to remote Linux PCs/WSL2.
     /// </summary>
     [RequireComponent(typeof(ArmSimulationController))]
     public class RosRoboArmBridge : MonoBehaviour
     {
+        private const string PREF_HOST = "EB15_RosHost";
+        private const string PREF_IN_PORT = "EB15_ListenPort";
+        private const string PREF_OUT_PORT = "EB15_RosPort";
+
         [Header("ROS 2 Network Configuration")]
         [Tooltip("Port on which Unity listens for incoming ROS 2 joint states (UDP).")]
         public int listenPort = 5005;
@@ -40,7 +45,14 @@ namespace RoboArm
         [SerializeField] private float packetsPerSecond = 0f;
         [SerializeField] private int totalPacketsReceived = 0;
         [SerializeField] private string lastPacketTimestamp = "Never";
-        public bool showHUD = true;
+        public bool showHUD = false; // Managed by Master Dashboard
+
+        // Public accessors for the Dashboard UI
+        public bool IsConnected => isConnected;
+        public bool IsReceivingRealEncoders => isReceivingRealEncoders;
+        public float PacketsPerSecond => packetsPerSecond;
+        public int TotalPacketsReceived => totalPacketsReceived;
+        public string LastPacketTimestamp => lastPacketTimestamp;
 
         // Data packet structure matching unity_bridge_node.py
         [Serializable]
@@ -75,6 +87,11 @@ namespace RoboArm
             {
                 armController = GetComponent<ArmSimulationController>();
             }
+
+            // Load saved network preferences
+            rosHost = PlayerPrefs.GetString(PREF_HOST, rosHost);
+            listenPort = PlayerPrefs.GetInt(PREF_IN_PORT, listenPort);
+            rosPort = PlayerPrefs.GetInt(PREF_OUT_PORT, rosPort);
         }
 
         void OnEnable()
@@ -90,6 +107,28 @@ namespace RoboArm
         void OnDestroy()
         {
             StopBridge();
+        }
+
+        /// <summary>
+        /// Reconfigures network sockets at runtime when user changes IP or ports in the UI.
+        /// </summary>
+        public void Reconnect(string newRosHost, int newListenPort, int newRosPort)
+        {
+            Debug.Log($"[RosRoboArmBridge] Reconnecting to ROS 2: Host={newRosHost}, ListenPort={newListenPort}, SendPort={newRosPort}");
+
+            StopBridge();
+
+            rosHost = newRosHost.Trim();
+            listenPort = newListenPort;
+            rosPort = newRosPort;
+
+            // Save preferences
+            PlayerPrefs.SetString(PREF_HOST, rosHost);
+            PlayerPrefs.SetInt(PREF_IN_PORT, listenPort);
+            PlayerPrefs.SetInt(PREF_OUT_PORT, rosPort);
+            PlayerPrefs.Save();
+
+            StartBridge();
         }
 
         private void StartBridge()
@@ -117,7 +156,7 @@ namespace RoboArm
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[RosRoboArmBridge] Failed to initialize UDP sockets: {ex.Message}");
+                Debug.LogError($"[RosRoboArmBridge] Failed to initialize UDP sockets on port {listenPort}: {ex.Message}");
             }
         }
 
@@ -127,7 +166,7 @@ namespace RoboArm
 
             if (receiveThread != null && receiveThread.IsAlive)
             {
-                receiveThread.Abort();
+                try { receiveThread.Abort(); } catch { }
                 receiveThread = null;
             }
 
@@ -185,14 +224,14 @@ namespace RoboArm
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogWarning($"[RosRoboArmBridge] Receive parsing error: {ex.Message}");
+                    Debug.LogWarning($"[RosRoboArmBridge] Receive error: {ex.Message}");
                 }
             }
         }
 
         void Update()
         {
-            // Diagnostic FPS calculation
+            // FPS & data rate calculation
             fpsTimer += Time.deltaTime;
             if (fpsTimer >= 1.0f)
             {
@@ -245,7 +284,7 @@ namespace RoboArm
         /// </summary>
         public void SendTargetPoseToRos(float j1Deg, float j2Deg, float j3Deg, float wristDeg, float gripNorm)
         {
-            if (udpSender == null) return;
+            if (udpSender == null || string.IsNullOrEmpty(rosHost)) return;
 
             try
             {
@@ -267,68 +306,8 @@ namespace RoboArm
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[RosRoboArmBridge] Failed to send command to ROS: {ex.Message}");
+                Debug.LogWarning($"[RosRoboArmBridge] Failed to send command to {rosHost}:{rosPort}: {ex.Message}");
             }
-        }
-
-        void OnGUI()
-        {
-            if (!showHUD) return;
-
-            int width = 330;
-            int height = 150;
-            int x = Screen.width - width - 15;
-            int y = 15;
-
-            GUI.Box(new Rect(x, y, width, height), "Real Robot Hardware Twin Link");
-            GUILayout.BeginArea(new Rect(x + 10, y + 25, width - 20, height - 30));
-
-            Color oldColor = GUI.color;
-            if (isConnected)
-            {
-                if (isReceivingRealEncoders)
-                {
-                    GUI.color = Color.green;
-                    GUILayout.Label($" STATUS: HARDWARE ENCODERS LIVE ({packetsPerSecond:F0} Hz)");
-                }
-                else
-                {
-                    GUI.color = Color.cyan;
-                    GUILayout.Label($" STATUS: ROS 2 CONNECTED ({packetsPerSecond:F0} Hz)");
-                }
-            }
-            else
-            {
-                GUI.color = new Color(1f, 0.65f, 0.1f);
-                GUILayout.Label($" STATUS: LISTENING ON UDP:{listenPort}");
-            }
-            GUI.color = oldColor;
-
-            GUILayout.Label($"Telemetry: {totalPacketsReceived} pkts | Last: {lastPacketTimestamp}");
-
-            streamCommandsToRos = GUILayout.Toggle(streamCommandsToRos, " Stream Slider Targets to Real Robot");
-
-            GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Send Goal Now"))
-            {
-                if (armController != null)
-                {
-                    SendTargetPoseToRos(
-                        armController.targetJoint1,
-                        armController.targetJoint2,
-                        armController.targetJoint3,
-                        armController.targetWrist,
-                        armController.targetGripper
-                    );
-                }
-            }
-            if (armController != null && GUILayout.Button("Snap Ghost to Arm"))
-            {
-                armController.SnapGhostToPhysicalPose();
-            }
-            GUILayout.EndHorizontal();
-
-            GUILayout.EndArea();
         }
     }
 }
