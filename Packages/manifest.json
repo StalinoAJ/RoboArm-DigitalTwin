@@ -9,6 +9,7 @@
     "com.unity.pipeline": "0.7.0-exp.1",
     "com.unity.render-pipelines.universal": "17.5.0",
     "com.unity.robotics.urdf-importer": "https://github.com/Unity-Technologies/URDF-Importer.git?path=/com.unity.robotics.urdf-importer",
+    "com.unity.services.cloud-build": "2.1.0",
     "com.unity.test-framework": "1.7.0",
     "com.unity.timeline": "1.8.12",
     "com.unity.ugui": "2.5.0",
