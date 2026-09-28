@@ -116,6 +116,7 @@ namespace RoboArm
         private Texture2D texBtnClose;
         private Texture2D texBtnApply;
         private Texture2D texBtnSave;
+        private Texture2D texBtnExit;
 
         private GUIStyle styleSidebar;
         private GUIStyle styleMainPanel;
@@ -135,6 +136,7 @@ namespace RoboArm
         private GUIStyle styleBtnClose;
         private GUIStyle styleBtnApply;
         private GUIStyle styleBtnSave;
+        private GUIStyle styleBtnExit;
         private bool stylesReady = false;
 
         void Awake()
@@ -514,6 +516,7 @@ namespace RoboArm
             texBtnClose = CreateRoundedRectTexture(32, 32, 8, new Color(0.42f, 0.48f, 0.55f, 0.96f));
             texBtnApply = CreateRoundedRectTexture(32, 32, 8, new Color(0.18f, 0.46f, 0.88f, 0.98f));
             texBtnSave = CreateRoundedRectTexture(32, 32, 8, new Color(0.14f, 0.36f, 0.76f, 0.98f));
+            texBtnExit = CreateRoundedRectTexture(32, 32, 8, new Color(0.85f, 0.22f, 0.22f, 0.96f));
 
             // GUIStyles with 9-slice borders
             styleSidebar = new GUIStyle(GUI.skin.box);
@@ -634,6 +637,14 @@ namespace RoboArm
             styleBtnSave.normal.textColor = Color.white;
             styleBtnSave.alignment = TextAnchor.MiddleCenter;
 
+            styleBtnExit = new GUIStyle(GUI.skin.button);
+            styleBtnExit.normal.background = texBtnExit;
+            styleBtnExit.border = new RectOffset(8, 8, 8, 8);
+            styleBtnExit.fontSize = 11;
+            styleBtnExit.fontStyle = FontStyle.Bold;
+            styleBtnExit.normal.textColor = Color.white;
+            styleBtnExit.alignment = TextAnchor.MiddleCenter;
+
             stylesReady = true;
         }
 
@@ -648,12 +659,17 @@ namespace RoboArm
                     ghostArm.SetVisible(!ghostArm.isVisible);
                     Event.current.Use();
                 }
+                else if (Event.current.keyCode == KeyCode.Escape)
+                {
+                    QuitGame();
+                    Event.current.Use();
+                }
             }
 
             InitModernStyles();
 
-            // Render camera navigation toolbar in top-right
-            DrawCameraQuickBar();
+            // Render camera navigation toolbar and Close Game button in top-right
+            DrawTopRightBar();
 
             if (!showDashboard)
             {
@@ -717,9 +733,15 @@ namespace RoboArm
 
             GUILayout.FlexibleSpace();
 
-            // Bottom brand logo
+            // Bottom brand logo & Exit Game button
             GUILayout.Label("EB-15", styleTabActive);
             GUILayout.Label("Digital Twin UI", styleSubtext);
+            GUILayout.Space(6);
+
+            if (GUILayout.Button("✕ Exit Game", styleBtnExit, GUILayout.Height(28)))
+            {
+                QuitGame();
+            }
 
             GUILayout.EndArea();
 
@@ -751,13 +773,13 @@ namespace RoboArm
             float btnGap = 8f;
             float rightEdge = panelX + panelW - contentMargin;
 
-            // Buttons: RESET ALL, CLOSE, APPLY, SAVE
+            // Buttons: RESET ALL, MINIMIZE, APPLY, SAVE
             if (GUI.Button(new Rect(rightEdge - (btnW * 4 + btnGap * 3), btnY, btnW, 30), "RESET ALL", styleBtnReset))
             {
                 SnapGhostToPhysicalPose();
             }
 
-            if (GUI.Button(new Rect(rightEdge - (btnW * 3 + btnGap * 2), btnY, btnW, 30), "CLOSE", styleBtnClose))
+            if (GUI.Button(new Rect(rightEdge - (btnW * 3 + btnGap * 2), btnY, btnW, 30), "MINIMIZE", styleBtnClose))
             {
                 showDashboard = false;
             }
@@ -1108,53 +1130,75 @@ namespace RoboArm
             GUILayout.EndHorizontal();
         }
 
-        private void DrawCameraQuickBar()
+        private void DrawTopRightBar()
         {
-            float barW = 310f;
-            float barH = 34f;
-            float barX = Screen.width - barW - 22f;
+            float barW = 300f;
+            float exitW = 78f;
+            float gap = 8f;
+            float totalW = barW + exitW + gap;
+            float startX = Screen.width - totalW - 22f;
             float barY = 22f;
-            Rect barRect = new Rect(barX, barY, barW, barH);
+            float barH = 34f;
 
-            MouseCameraController.registeredQuickBarRect = barRect;
+            Rect totalRect = new Rect(startX, barY, totalW, barH);
+            Rect barRect = new Rect(startX, barY, barW, barH);
+            Rect exitRect = new Rect(startX + barW + gap, barY, exitW, barH);
 
-            // Translucent container matching theme
+            MouseCameraController.registeredQuickBarRect = totalRect;
+
+            // 1. Translucent Camera toolbar matching theme
             GUI.Box(barRect, "", styleSidebar);
 
-            GUILayout.BeginArea(new Rect(barX + 6f, barY + 4f, barW - 12f, barH - 8f));
+            GUILayout.BeginArea(new Rect(startX + 6f, barY + 4f, barW - 12f, barH - 8f));
             GUILayout.BeginHorizontal();
 
             GUI.color = new Color(0.35f, 0.75f, 1f);
             GUILayout.Label("🎥", styleSubtext, GUILayout.Width(18), GUILayout.Height(26));
             GUI.color = Color.white;
 
-            if (GUILayout.Button("Iso", styleCardPill, GUILayout.Width(46), GUILayout.Height(26)))
+            if (GUILayout.Button("Iso", styleCardPill, GUILayout.Width(44), GUILayout.Height(26)))
             {
                 MouseCameraController.Instance?.SetPresetView(MouseCameraController.ViewPreset.Isometric);
             }
 
-            if (GUILayout.Button("Front", styleCardPill, GUILayout.Width(48), GUILayout.Height(26)))
+            if (GUILayout.Button("Front", styleCardPill, GUILayout.Width(46), GUILayout.Height(26)))
             {
                 MouseCameraController.Instance?.SetPresetView(MouseCameraController.ViewPreset.Front);
             }
 
-            if (GUILayout.Button("Side", styleCardPill, GUILayout.Width(46), GUILayout.Height(26)))
+            if (GUILayout.Button("Side", styleCardPill, GUILayout.Width(44), GUILayout.Height(26)))
             {
                 MouseCameraController.Instance?.SetPresetView(MouseCameraController.ViewPreset.Side);
             }
 
-            if (GUILayout.Button("Top", styleCardPill, GUILayout.Width(44), GUILayout.Height(26)))
+            if (GUILayout.Button("Top", styleCardPill, GUILayout.Width(42), GUILayout.Height(26)))
             {
                 MouseCameraController.Instance?.SetPresetView(MouseCameraController.ViewPreset.Top);
             }
 
-            if (GUILayout.Button("🔄", styleCardPill, GUILayout.Width(34), GUILayout.Height(26)))
+            if (GUILayout.Button("🔄", styleCardPill, GUILayout.Width(32), GUILayout.Height(26)))
             {
                 MouseCameraController.Instance?.SetPresetView(MouseCameraController.ViewPreset.Reset);
             }
 
             GUILayout.EndHorizontal();
             GUILayout.EndArea();
+
+            // 2. Dedicated Red Game Close / Exit Button
+            if (GUI.Button(exitRect, "✕ Exit", styleBtnExit))
+            {
+                QuitGame();
+            }
+        }
+
+        public void QuitGame()
+        {
+            Debug.Log("[ArmSimulationController] Closing RoboArm application...");
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;
+#else
+            Application.Quit();
+#endif
         }
 
         private void DrawModernGuideTab(float totalW)
@@ -1194,6 +1238,8 @@ namespace RoboArm
             DrawShortcutRow("G", "Toggle Hologram Ghost Preview");
             DrawShortcutRow("Space", "Play / Pause Waypoint Demo");
             DrawShortcutRow("1 / 3 / 7", "Front / Side / Top View");
+            DrawShortcutRow("Esc", "Close / Exit Game Application");
+            DrawShortcutRow("✕ Exit", "Top-Right Game Exit Button");
             GUILayout.EndVertical();
 
             GUILayout.EndHorizontal();
