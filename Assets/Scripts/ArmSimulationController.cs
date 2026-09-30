@@ -191,6 +191,17 @@ namespace RoboArm
 
         void Start()
         {
+            // Ensure root ArticulationBody is teleported to match GameObject transform pose
+            var allBodies = GetComponentsInChildren<ArticulationBody>(true);
+            foreach (var ab in allBodies)
+            {
+                if (ab.isRoot)
+                {
+                    ab.TeleportRoot(transform.position, transform.rotation);
+                    break;
+                }
+            }
+
             // Auto-configure MouseCameraController on Main Camera if not already attached
             if (Camera.main != null && Camera.main.GetComponent<MouseCameraController>() == null)
             {
@@ -654,6 +665,20 @@ namespace RoboArm
             {
                 if (Event.current.keyCode == KeyCode.Space) { autoDemo = !autoDemo; Event.current.Use(); }
                 else if (Event.current.keyCode == KeyCode.Tab) { showDashboard = !showDashboard; Event.current.Use(); }
+                else if (Event.current.keyCode == KeyCode.F10 && RTXGraphicsManager.Instance != null)
+                {
+                    RTXGraphicsManager.Instance.ToggleRTX();
+                    Event.current.Use();
+                }
+                else if (Event.current.keyCode == KeyCode.F || Event.current.keyCode == KeyCode.R)
+                {
+                    var camCtrl = Camera.main != null ? Camera.main.GetComponent<MouseCameraController>() : null;
+                    if (camCtrl != null)
+                    {
+                        camCtrl.SetPresetView(MouseCameraController.ViewPreset.Reset);
+                        Event.current.Use();
+                    }
+                }
                 else if (Event.current.keyCode == KeyCode.G && ghostArm != null)
                 {
                     ghostArm.SetVisible(!ghostArm.isVisible);
@@ -733,15 +758,10 @@ namespace RoboArm
 
             GUILayout.FlexibleSpace();
 
-            // Bottom brand logo & Exit Game button
+            // Bottom brand logo
             GUILayout.Label("EB-15", styleTabActive);
             GUILayout.Label("Digital Twin UI", styleSubtext);
             GUILayout.Space(6);
-
-            if (GUILayout.Button("✕ Exit Game", styleBtnExit, GUILayout.Height(28)))
-            {
-                QuitGame();
-            }
 
             GUILayout.EndArea();
 
@@ -905,6 +925,15 @@ namespace RoboArm
             }
 
             autoDemo = DrawStyledCheckbox("Waypoint Demo Active", autoDemo);
+            
+            if (RTXGraphicsManager.Instance != null)
+            {
+                bool nextRtx = DrawStyledCheckbox("✨ RTX Ultra Ray Tracing", RTXGraphicsManager.Instance.rtxEnabled);
+                if (nextRtx != RTXGraphicsManager.Instance.rtxEnabled)
+                {
+                    RTXGraphicsManager.Instance.SetRTX(nextRtx);
+                }
+            }
 
             GUILayout.Space(12);
             DrawColumnHeader("Gripper Tools");
@@ -1092,23 +1121,49 @@ namespace RoboArm
                 ApplyPresetPose(0f, 0f, 0f, 0f, 0f);
 
             GUILayout.Space(10);
-            DrawColumnHeader("Camera Views");
+            DrawColumnHeader("Room Camera Controls");
+
+            if (MouseCameraController.Instance != null)
+            {
+                GUILayout.Label($"Move Speed: {MouseCameraController.Instance.keyboardMoveSpeed:F1} m/s", styleSubtext);
+                MouseCameraController.Instance.keyboardMoveSpeed = GUILayout.HorizontalSlider(MouseCameraController.Instance.keyboardMoveSpeed, 0.4f, 3.5f);
+            }
+
+            GUILayout.Space(4);
+            GUILayout.Label("🎮 Keys: WASD • Elevate: Q/E", styleSubtext);
+
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button("🎥 Iso", styleCardPill, GUILayout.Height(26)))
-                MouseCameraController.Instance?.SetPresetView(MouseCameraController.ViewPreset.Isometric);
-            if (GUILayout.Button("🔭 Front", styleCardPill, GUILayout.Height(26)))
-                MouseCameraController.Instance?.SetPresetView(MouseCameraController.ViewPreset.Front);
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("▲ Forward (W)", styleCardPill, GUILayout.Width(110), GUILayout.Height(25)))
+                MouseCameraController.Instance?.MoveForward();
+            GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
-            GUILayout.Space(3);
+
+            GUILayout.Space(2);
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button("📐 Side", styleCardPill, GUILayout.Height(26)))
-                MouseCameraController.Instance?.SetPresetView(MouseCameraController.ViewPreset.Side);
-            if (GUILayout.Button("🌐 Top", styleCardPill, GUILayout.Height(26)))
-                MouseCameraController.Instance?.SetPresetView(MouseCameraController.ViewPreset.Top);
+            if (GUILayout.Button("◀ Left (A)", styleCardPill, GUILayout.Height(25)))
+                MouseCameraController.Instance?.MoveLeft();
+            if (GUILayout.Button("🔄 Center (R)", styleCardPill, GUILayout.Height(25)))
+                MouseCameraController.Instance?.FocusTarget();
+            if (GUILayout.Button("▶ Right (D)", styleCardPill, GUILayout.Height(25)))
+                MouseCameraController.Instance?.MoveRight();
             GUILayout.EndHorizontal();
-            GUILayout.Space(3);
-            if (GUILayout.Button("🔄 Reset View (R)", styleCardPill, GUILayout.Height(26)))
-                MouseCameraController.Instance?.SetPresetView(MouseCameraController.ViewPreset.Reset);
+
+            GUILayout.Space(2);
+            GUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("▼ Back (S)", styleCardPill, GUILayout.Width(110), GUILayout.Height(25)))
+                MouseCameraController.Instance?.MoveBackward();
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(4);
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("⏫ Up (E)", styleCardPill, GUILayout.Height(25)))
+                MouseCameraController.Instance?.MoveUp();
+            if (GUILayout.Button("⏬ Down (Q)", styleCardPill, GUILayout.Height(25)))
+                MouseCameraController.Instance?.MoveDown();
+            GUILayout.EndHorizontal();
             GUILayout.EndVertical();
 
             GUILayout.Space(15);
@@ -1132,59 +1187,15 @@ namespace RoboArm
 
         private void DrawTopRightBar()
         {
-            float barW = 300f;
-            float exitW = 78f;
-            float gap = 8f;
-            float totalW = barW + exitW + gap;
-            float startX = Screen.width - totalW - 22f;
+            float exitW = 76f;
+            float exitH = 32f;
+            float startX = Screen.width - exitW - 22f;
             float barY = 22f;
-            float barH = 34f;
 
-            Rect totalRect = new Rect(startX, barY, totalW, barH);
-            Rect barRect = new Rect(startX, barY, barW, barH);
-            Rect exitRect = new Rect(startX + barW + gap, barY, exitW, barH);
+            Rect exitRect = new Rect(startX, barY, exitW, exitH);
+            MouseCameraController.registeredQuickBarRect = exitRect;
 
-            MouseCameraController.registeredQuickBarRect = totalRect;
-
-            // 1. Translucent Camera toolbar matching theme
-            GUI.Box(barRect, "", styleSidebar);
-
-            GUILayout.BeginArea(new Rect(startX + 6f, barY + 4f, barW - 12f, barH - 8f));
-            GUILayout.BeginHorizontal();
-
-            GUI.color = new Color(0.35f, 0.75f, 1f);
-            GUILayout.Label("🎥", styleSubtext, GUILayout.Width(18), GUILayout.Height(26));
-            GUI.color = Color.white;
-
-            if (GUILayout.Button("Iso", styleCardPill, GUILayout.Width(44), GUILayout.Height(26)))
-            {
-                MouseCameraController.Instance?.SetPresetView(MouseCameraController.ViewPreset.Isometric);
-            }
-
-            if (GUILayout.Button("Front", styleCardPill, GUILayout.Width(46), GUILayout.Height(26)))
-            {
-                MouseCameraController.Instance?.SetPresetView(MouseCameraController.ViewPreset.Front);
-            }
-
-            if (GUILayout.Button("Side", styleCardPill, GUILayout.Width(44), GUILayout.Height(26)))
-            {
-                MouseCameraController.Instance?.SetPresetView(MouseCameraController.ViewPreset.Side);
-            }
-
-            if (GUILayout.Button("Top", styleCardPill, GUILayout.Width(42), GUILayout.Height(26)))
-            {
-                MouseCameraController.Instance?.SetPresetView(MouseCameraController.ViewPreset.Top);
-            }
-
-            if (GUILayout.Button("🔄", styleCardPill, GUILayout.Width(32), GUILayout.Height(26)))
-            {
-                MouseCameraController.Instance?.SetPresetView(MouseCameraController.ViewPreset.Reset);
-            }
-
-            GUILayout.EndHorizontal();
-            GUILayout.EndArea();
-
-            // 2. Dedicated Red Game Close / Exit Button
+            // Single dedicated Red Game Close / Exit Button
             if (GUI.Button(exitRect, "✕ Exit", styleBtnExit))
             {
                 QuitGame();
@@ -1224,20 +1235,22 @@ namespace RoboArm
 
             // Column 2: Camera & Keyboard Shortcuts
             GUILayout.BeginVertical(GUILayout.Width(colW));
-            DrawColumnHeader("Camera Navigation (Mouse)");
+            DrawColumnHeader("Room Navigation (Keyboard)");
 
-            DrawShortcutRow("RMB / LMB", "Orbit / Rotate around Robot");
-            DrawShortcutRow("MMB / Shift", "Pan View (Drag)");
-            DrawShortcutRow("Scroll", "Zoom (Dolly) In / Out");
-            DrawShortcutRow("F", "Focus / Frame Robot Arm");
-            DrawShortcutRow("R", "Reset to Isometric View");
+            DrawShortcutRow("W / S", "Move Forward / Backward");
+            DrawShortcutRow("A / D", "Strafe Left / Right");
+            DrawShortcutRow("E / Q", "Elevate Camera Up / Down");
+            DrawShortcutRow("Shift", "Sprint / Boost Move Speed");
+            DrawShortcutRow("R / F", "Center View on Robot Table");
+            DrawShortcutRow("RMB", "Look / Rotate view around");
+            DrawShortcutRow("Scroll", "Zoom In / Out");
 
-            GUILayout.Space(10);
+            GUILayout.Space(8);
             DrawColumnHeader("Simulation Hotkeys");
             DrawShortcutRow("Tab", "Toggle Dashboard Window");
             DrawShortcutRow("G", "Toggle Hologram Ghost Preview");
             DrawShortcutRow("Space", "Play / Pause Waypoint Demo");
-            DrawShortcutRow("1 / 3 / 7", "Front / Side / Top View");
+            DrawShortcutRow("F10", "Toggle RTX Graphics Quality");
             DrawShortcutRow("Esc", "Close / Exit Game Application");
             DrawShortcutRow("✕ Exit", "Top-Right Game Exit Button");
             GUILayout.EndVertical();

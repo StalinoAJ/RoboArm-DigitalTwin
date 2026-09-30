@@ -23,12 +23,22 @@ namespace RoboArm
         public Material ghostMaterial;
 
         [Tooltip("Toggle visibility of the ghost preview.")]
-        public bool isVisible = true;
+        public bool isVisible = false;
 
         private MeshRenderer[] renderers;
 
         void Awake()
         {
+            var allBodies = GetComponentsInChildren<ArticulationBody>(true);
+            foreach (var ab in allBodies)
+            {
+                if (ab.isRoot)
+                {
+                    ab.TeleportRoot(transform.position, transform.rotation);
+                    break;
+                }
+            }
+
             FindJoints();
             renderers = GetComponentsInChildren<MeshRenderer>();
             ConfigureGhostDrives();

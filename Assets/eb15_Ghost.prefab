@@ -5500,7 +5500,7 @@ MonoBehaviour:
   gripperLeft: {fileID: 7644719828589787993}
   gripperRight: {fileID: 3201644765255568484}
   ghostMaterial: {fileID: 2100000, guid: e4e22ce93d5f84b4083089aca789af76, type: 2}
-  isVisible: 1
+  isVisible: 0
 --- !u!1 &6210065243122448320
 GameObject:
   m_ObjectHideFlags: 0
