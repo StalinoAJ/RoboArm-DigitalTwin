@@ -10372,9 +10372,41 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 330030476148748122, guid: 221c3e8633943a64f912f307363d1488, type: 3}
+      propertyPath: m_ParentAnchorPosition.y
+      value: 0.030799985
+      objectReference: {fileID: 0}
+    - target: {fileID: 2024421217163648479, guid: 221c3e8633943a64f912f307363d1488, type: 3}
+      propertyPath: m_ParentAnchorPosition.y
+      value: -0.000000059604645
+      objectReference: {fileID: 0}
+    - target: {fileID: 2094731277432587342, guid: 221c3e8633943a64f912f307363d1488, type: 3}
+      propertyPath: m_ParentAnchorPosition.y
+      value: -0.009499967
+      objectReference: {fileID: 0}
+    - target: {fileID: 2676845462893997750, guid: 221c3e8633943a64f912f307363d1488, type: 3}
+      propertyPath: m_ParentAnchorPosition.y
+      value: 0.087700054
+      objectReference: {fileID: 0}
+    - target: {fileID: 4235158740032615951, guid: 221c3e8633943a64f912f307363d1488, type: 3}
+      propertyPath: m_ParentAnchorPosition.y
+      value: 0.000000059604645
+      objectReference: {fileID: 0}
+    - target: {fileID: 5252439069741995199, guid: 221c3e8633943a64f912f307363d1488, type: 3}
+      propertyPath: m_ParentAnchorPosition.y
+      value: 0.000000059604645
+      objectReference: {fileID: 0}
+    - target: {fileID: 5324272102416600193, guid: 221c3e8633943a64f912f307363d1488, type: 3}
+      propertyPath: m_ParentAnchorPosition.y
+      value: 0.17799993
+      objectReference: {fileID: 0}
+    - target: {fileID: 5770637678344458517, guid: 221c3e8633943a64f912f307363d1488, type: 3}
+      propertyPath: m_ParentAnchorPosition.x
+      value: -0.08380001
+      objectReference: {fileID: 0}
     - target: {fileID: 5770637678344458517, guid: 221c3e8633943a64f912f307363d1488, type: 3}
       propertyPath: m_ParentAnchorPosition.y
-      value: 0.043
+      value: 0.04299997
       objectReference: {fileID: 0}
     - target: {fileID: 7950988552964067694, guid: 221c3e8633943a64f912f307363d1488, type: 3}
       propertyPath: m_Name
@@ -10383,8 +10415,86 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 7950988552964067694, guid: 221c3e8633943a64f912f307363d1488, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1179207748685868393}
   m_SourcePrefab: {fileID: 100100000, guid: 221c3e8633943a64f912f307363d1488, type: 3}
+--- !u!1 &1179207748685868390 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 7950988552964067694, guid: 221c3e8633943a64f912f307363d1488, type: 3}
+  m_PrefabInstance: {fileID: 1179207748685868389}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &1179207748685868391 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 3875263201706123748, guid: 221c3e8633943a64f912f307363d1488, type: 3}
+  m_PrefabInstance: {fileID: 1179207748685868389}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1179207748685868390}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 23f4f12491b48f54b8944bc14c254926, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::RoboArm.RosRoboArmBridge
+--- !u!114 &1179207748685868392 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 4352817359331961886, guid: 221c3e8633943a64f912f307363d1488, type: 3}
+  m_PrefabInstance: {fileID: 1179207748685868389}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1179207748685868390}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: abc35c93854100448b7f01779644ad3c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::RoboArm.ArmSimulationController
+--- !u!114 &1179207748685868393
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1179207748685868390}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 02bbc7e8e8e68f8aa821ccc9fd5d9903, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::RoboArm.Quest2RoboArmController
+  armController: {fileID: 1179207748685868392}
+  ghostArm: {fileID: 1669927496824948670}
+  rosBridge: {fileID: 1179207748685868391}
+  controllerHand: 0
+  controlMode: 0
+  requireClutchToMove: 1
+  relativeTracking: 1
+  yawSensitivity: 1
+  pitchSensitivity: 1
+  elbowCoupling: 0.8
+  rollSensitivity: 1
+  invertYaw: 0
+  invertPitch: 0
+  invertRoll: 0
+  invertGripper: 0
+  gyroDeadzoneDeg: 1.5
+  smoothingTime: 0.05
+  ikReachScale: 1.2
+  ikWorkspaceCenter: {x: 0, y: 0.25, z: 0.35}
+  enableHaptics: 1
+  hapticIntensity: 0.45
+  enableEditorEmulation: 1
+  forceEmulationMode: 0
+  isConnected: 0
+  isClutchEngaged: 0
+  gyroEuler: {x: 0, y: 0, z: 0}
+  gyroAngularVelocity: {x: 0, y: 0, z: 0}
+  controllerPosition: {x: 0, y: 0, z: 0}
+  triggerValue: 0
+  gripValue: 0
+  thumbstickAxis: {x: 0, y: 0}
+  buttonAPressed: 0
+  buttonBPressed: 0
+  thumbstickClicked: 0
+  menuButtonPressed: 0
+  activeDeviceName: None
 --- !u!1001 &1669927496824948669
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -10446,6 +10556,17 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 2a0bd3312cf3fdf4f848e89bb3531214, type: 3}
+--- !u!114 &1669927496824948670 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 8521129869748141611, guid: 2a0bd3312cf3fdf4f848e89bb3531214, type: 3}
+  m_PrefabInstance: {fileID: 1669927496824948669}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7cd11050b2a333e4a9a8713dc5e98783, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::RoboArm.GhostArmPreview
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

@@ -7826,6 +7826,7 @@ GameObject:
   - component: {fileID: 645728032898524136}
   - component: {fileID: 4352817359331961886}
   - component: {fileID: 3875263201706123748}
+  - component: {fileID: 7847359554179338953}
   m_Layer: 0
   m_Name: eb15
   m_TagString: robot
@@ -7878,23 +7879,36 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: abc35c93854100448b7f01779644ad3c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RoboArm.ArmSimulationController
-  autoDemo: 0
-  demoSpeed: 0.5
-  driveStiffness: 10000
-  driveDamping: 200
-  driveForceLimit: 1000
   joint1: {fileID: 330030476148748122}
   joint2: {fileID: 5770637678344458517}
   joint3: {fileID: 2100783846309822826}
   wristJoint: {fileID: 2024421217163648479}
   gripperLeft: {fileID: 4235158740032615951}
   gripperRight: {fileID: 5252439069741995199}
+  ghostArm: {fileID: 0}
   targetJoint1: -77.14286
   targetJoint2: 40.32468
   targetJoint3: -77.35
   targetWrist: 43.246754
   targetGripper: 0.3538961
-  showUI: 1
+  currentJoint1: 0
+  currentJoint2: 0
+  currentJoint3: 0
+  currentWrist: 0
+  currentGripper: 0.5
+  maxSpeedJoint1: 57.3
+  maxSpeedJoint2: 45.8
+  maxSpeedJoint3: 57.3
+  maxSpeedWrist: 114.6
+  maxSpeedGripper: 1.78
+  driveStiffness: 10000
+  driveDamping: 200
+  driveForceLimit: 1000
+  autoDemo: 0
+  demoSpeed: 0.5
+  isHardwareEncoderLive: 0
+  quest2Controller: {fileID: 7847359554179338953}
+  showDashboard: 1
   waypoints:
   - name: Home (Upright)
     j1: 0
@@ -7959,17 +7973,63 @@ MonoBehaviour:
   listenPort: 5005
   rosHost: 192.168.1.54
   rosPort: 5006
-  enableRosControl: 1
-  autoPauseDemoOnRosData: 1
-  smoothMotion: 1
-  smoothSpeed: 25
   streamCommandsToRos: 1
   armController: {fileID: 0}
   isConnected: 0
+  isReceivingRealEncoders: 0
   packetsPerSecond: 0
   totalPacketsReceived: 0
+  totalPacketsSent: 0
   lastPacketTimestamp: Never
   showHUD: 1
+--- !u!114 &7847359554179338953
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7950988552964067694}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 02bbc7e8e8e68f8aa821ccc9fd5d9903, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::RoboArm.Quest2RoboArmController
+  armController: {fileID: 4352817359331961886}
+  ghostArm: {fileID: 0}
+  rosBridge: {fileID: 3875263201706123748}
+  controllerHand: 0
+  controlMode: 0
+  requireClutchToMove: 1
+  relativeTracking: 1
+  yawSensitivity: 1
+  pitchSensitivity: 1
+  elbowCoupling: 0.8
+  rollSensitivity: 1
+  invertYaw: 0
+  invertPitch: 0
+  invertRoll: 0
+  invertGripper: 0
+  gyroDeadzoneDeg: 1.5
+  smoothingTime: 0.05
+  ikReachScale: 1.2
+  ikWorkspaceCenter: {x: 0, y: 0.25, z: 0.35}
+  enableHaptics: 1
+  hapticIntensity: 0.45
+  enableEditorEmulation: 1
+  forceEmulationMode: 0
+  isConnected: 0
+  isClutchEngaged: 0
+  gyroEuler: {x: 0, y: 0, z: 0}
+  gyroAngularVelocity: {x: 0, y: 0, z: 0}
+  controllerPosition: {x: 0, y: 0, z: 0}
+  triggerValue: 0
+  gripValue: 0
+  thumbstickAxis: {x: 0, y: 0}
+  buttonAPressed: 0
+  buttonBPressed: 0
+  thumbstickClicked: 0
+  menuButtonPressed: 0
+  activeDeviceName: None
 --- !u!1 &7964332946028241688
 GameObject:
   m_ObjectHideFlags: 0

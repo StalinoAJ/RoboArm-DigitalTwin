@@ -60,9 +60,12 @@ namespace RoboArm
         public bool isHardwareEncoderLive = false;
         private float lastEncoderReceiveTime = -10f;
 
+        [Header("Meta Quest 2 Controller Reference")]
+        public Quest2RoboArmController quest2Controller;
+
         [Header("UI Dashboard Settings")]
         public bool showDashboard = true;
-        private int selectedSidebarTab = 0; // 0: Controls, 1: Network, 2: Presets, 3: Guide
+        private int selectedSidebarTab = 0; // 0: Controls, 1: Network, 2: Presets, 3: Quest 2, 4: Guide
 
         // Network inputs
         private string inputRosHost = "192.168.1.54";
@@ -181,6 +184,12 @@ namespace RoboArm
                 inputRosHost = rosBridge.rosHost;
                 inputListenPort = rosBridge.listenPort.ToString();
                 inputRosPort = rosBridge.rosPort.ToString();
+            }
+
+            if (quest2Controller == null)
+            {
+                quest2Controller = GetComponent<Quest2RoboArmController>();
+                if (quest2Controller == null) quest2Controller = FindAnyObjectByType<Quest2RoboArmController>();
             }
         }
 
@@ -734,7 +743,7 @@ namespace RoboArm
             // -------------------------------------------------------------
             GUILayout.BeginArea(new Rect(panelX + 14, panelY + 24, sidebarW - 20, panelH - 44));
 
-            string[] tabs = new string[] { "Controls", "Network", "Presets", "Guide" };
+            string[] tabs = new string[] { "Controls", "Network", "Presets", "Quest 2", "Guide" };
             for (int i = 0; i < tabs.Length; i++)
             {
                 bool isSelected = (i == selectedSidebarTab);
@@ -780,7 +789,8 @@ namespace RoboArm
                 case 0: DrawModernControlsTab(contentW); break;
                 case 1: DrawModernNetworkTab(contentW); break;
                 case 2: DrawModernPresetsTab(contentW); break;
-                case 3: DrawModernGuideTab(contentW); break;
+                case 3: DrawModernQuest2Tab(contentW); break;
+                case 4: DrawModernGuideTab(contentW); break;
             }
 
             GUILayout.EndArea();
@@ -933,6 +943,21 @@ namespace RoboArm
                 {
                     RTXGraphicsManager.Instance.SetRTX(nextRtx);
                 }
+            }
+
+            if (quest2Controller != null)
+            {
+                GUILayout.Space(6);
+                DrawColumnHeader("Meta Quest 2 VR");
+                string qText = quest2Controller.IsClutchEngaged ? "● QUEST 2: CLUTCH ON" :
+                               (quest2Controller.IsConnected ? "○ QUEST 2: CLUTCH OFF" : "QUEST 2: DISCONNECTED");
+                GUI.color = quest2Controller.IsClutchEngaged ? new Color(0.2f, 0.95f, 0.5f) :
+                            (quest2Controller.IsConnected ? new Color(1f, 0.7f, 0.2f) : new Color(0.6f, 0.65f, 0.7f));
+                if (GUILayout.Button(qText, styleCardPill, GUILayout.Height(26)))
+                {
+                    selectedSidebarTab = 3; // Switch to Quest 2 tab
+                }
+                GUI.color = Color.white;
             }
 
             GUILayout.Space(12);
@@ -1212,19 +1237,184 @@ namespace RoboArm
 #endif
         }
 
+        private void DrawModernQuest2Tab(float totalW)
+        {
+            if (quest2Controller == null)
+            {
+                quest2Controller = GetComponent<Quest2RoboArmController>();
+                if (quest2Controller == null) quest2Controller = FindAnyObjectByType<Quest2RoboArmController>();
+            }
+
+            if (quest2Controller == null)
+            {
+                GUILayout.Label("Quest 2 Controller subsystem not found on eb15.", styleSubtext);
+                if (GUILayout.Button("Attach Quest2RoboArmController", styleBtnApply, GUILayout.Height(30)))
+                {
+                    quest2Controller = gameObject.AddComponent<Quest2RoboArmController>();
+                    quest2Controller.armController = this;
+                    quest2Controller.ghostArm = ghostArm;
+                    quest2Controller.rosBridge = rosBridge;
+                }
+                return;
+            }
+
+            float colW = (totalW - 30f) / 3f;
+
+            GUILayout.BeginHorizontal();
+
+            // ==========================================
+            // COLUMN 1: CONTROLLER STATE & TELEOP MODE
+            // ==========================================
+            GUILayout.BeginVertical(GUILayout.Width(colW));
+            DrawColumnHeader("Quest 2 VR Teleop");
+
+            // Hardware Connection Status
+            bool connected = quest2Controller.IsConnected;
+            GUI.color = connected ? new Color(0.2f, 0.95f, 0.65f) : new Color(1f, 0.45f, 0.45f);
+            GUILayout.Box(connected ? "● QUEST 2 CONNECTED" : "○ SEARCHING CONTROLLER", styleCardPill, GUILayout.Height(26));
+            GUI.color = Color.white;
+            GUILayout.Space(4);
+
+            GUILayout.Label($"Device: {quest2Controller.ActiveDeviceName}", styleSubtext);
+            GUILayout.Space(6);
+
+            // Clutch Deadman State Pill
+            bool clutch = quest2Controller.IsClutchEngaged;
+            GUI.color = clutch ? new Color(0.2f, 0.95f, 0.65f) : new Color(1f, 0.65f, 0.2f);
+            if (GUILayout.Button(clutch ? "● CLUTCH: ENGAGED (Tracking)" : "⏸ CLUTCH: DISENGAGED (Hold Grip)", styleCardPill, GUILayout.Height(28)))
+            {
+                quest2Controller.requireClutchToMove = !quest2Controller.requireClutchToMove;
+            }
+            GUI.color = Color.white;
+            GUILayout.Space(6);
+
+            // Hand Selection
+            GUILayout.Label("Controller Hand:", styleSubtext);
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button(quest2Controller.controllerHand == Quest2RoboArmController.ControllerHand.RightHand ? "● Right" : "Right", styleCardPill, GUILayout.Height(24)))
+            {
+                quest2Controller.controllerHand = Quest2RoboArmController.ControllerHand.RightHand;
+                quest2Controller.FindXRController();
+            }
+            if (GUILayout.Button(quest2Controller.controllerHand == Quest2RoboArmController.ControllerHand.LeftHand ? "● Left" : "Left", styleCardPill, GUILayout.Height(24)))
+            {
+                quest2Controller.controllerHand = Quest2RoboArmController.ControllerHand.LeftHand;
+                quest2Controller.FindXRController();
+            }
+            GUILayout.EndHorizontal();
+            GUILayout.Space(6);
+
+            // Control Mode
+            GUILayout.Label("Teleoperation Mode:", styleSubtext);
+            string modeName = quest2Controller.controlMode == Quest2RoboArmController.TeleoperationMode.DirectGyroMimic ? "Direct Gyro Mimic" :
+                              (quest2Controller.controlMode == Quest2RoboArmController.TeleoperationMode.CartesianIK ? "Cartesian 6DoF (IK)" : "Angular Rate Jog");
+            if (GUILayout.Button($"Mode: {modeName}", styleCardPill, GUILayout.Height(26)))
+            {
+                int nextM = ((int)quest2Controller.controlMode + 1) % 3;
+                quest2Controller.controlMode = (Quest2RoboArmController.TeleoperationMode)nextM;
+            }
+            GUILayout.Space(6);
+
+            quest2Controller.requireClutchToMove = DrawStyledCheckbox("Deadman Switch (Grip Clutch)", quest2Controller.requireClutchToMove);
+            quest2Controller.relativeTracking = DrawStyledCheckbox("Relative Gyro Tracking", quest2Controller.relativeTracking);
+            quest2Controller.enableHaptics = DrawStyledCheckbox("Haptic Feedback Rumble", quest2Controller.enableHaptics);
+
+            GUILayout.EndVertical();
+
+            GUILayout.Space(15);
+
+            // ==========================================
+            // COLUMN 2: LIVE GYRO & BUTTON TELEMETRY
+            // ==========================================
+            GUILayout.BeginVertical(GUILayout.Width(colW));
+            DrawColumnHeader("Gyro & Motion IMU");
+
+            Vector3 gyro = quest2Controller.GyroEuler;
+            DrawReadoutCard("Gyro Pitch", $"{gyro.x:F1}°", "Tilt Up/Dn");
+            DrawReadoutCard("Gyro Yaw", $"{gyro.y:F1}°", "Pan L/R");
+            DrawReadoutCard("Gyro Roll", $"{gyro.z:F1}°", "Wrist Twist");
+
+            GUILayout.Space(8);
+            DrawColumnHeader("Buttons & Triggers");
+            DrawReadoutCard("Trigger (Grip)", $"{(quest2Controller.TriggerValue * 100f):F0}%", quest2Controller.TriggerValue > 0.5f ? "Pinching" : "Open");
+            DrawReadoutCard("Grip Button", $"{(quest2Controller.GripValue * 100f):F0}%", quest2Controller.IsClutchEngaged ? "CLUTCH" : "LOCKED");
+            DrawReadoutCard("Thumbstick", $"X:{quest2Controller.ThumbstickAxis.x:F2} Y:{quest2Controller.ThumbstickAxis.y:F2}", "");
+            DrawReadoutCard("Primary (A)", quest2Controller.ButtonA ? "PRESSED" : "Idle", "Preset/Home");
+            DrawReadoutCard("Secondary (B)", quest2Controller.ButtonB ? "PRESSED" : "Idle", "Ghost/Stream");
+
+            GUILayout.Space(8);
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("🎯 Calibrate Zero", styleBtnApply, GUILayout.Height(28)))
+            {
+                quest2Controller.CalibrateZero();
+            }
+            if (GUILayout.Button("🛑 Hold", styleBtnClose, GUILayout.Height(28)))
+            {
+                EmergencyHold();
+            }
+            GUILayout.EndHorizontal();
+
+            GUILayout.EndVertical();
+
+            GUILayout.Space(15);
+
+            // ==========================================
+            // COLUMN 3: SENSITIVITY & EMULATION
+            // ==========================================
+            GUILayout.BeginVertical(GUILayout.Width(colW));
+            DrawColumnHeader("Tuning & Inversions");
+
+            DrawStyledSlider("Yaw Gain (Base)", ref quest2Controller.yawSensitivity, 0.2f, 3.0f, "x");
+            DrawStyledSlider("Pitch Gain (Shoulder)", ref quest2Controller.pitchSensitivity, 0.2f, 3.0f, "x");
+            DrawStyledSlider("Roll Gain (Wrist)", ref quest2Controller.rollSensitivity, 0.2f, 3.0f, "x");
+
+            GUILayout.Space(4);
+            GUILayout.BeginHorizontal();
+            quest2Controller.invertYaw = DrawStyledCheckbox("Inv Yaw", quest2Controller.invertYaw);
+            quest2Controller.invertPitch = DrawStyledCheckbox("Inv Pitch", quest2Controller.invertPitch);
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            quest2Controller.invertRoll = DrawStyledCheckbox("Inv Roll", quest2Controller.invertRoll);
+            quest2Controller.invertGripper = DrawStyledCheckbox("Inv Grip", quest2Controller.invertGripper);
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(6);
+            DrawColumnHeader("Desktop Emulation");
+            quest2Controller.forceEmulationMode = DrawStyledCheckbox("Force Mouse/Kbd Emulation", quest2Controller.forceEmulationMode);
+            GUILayout.Label("• <b>Alt/G + Mouse:</b> Gyro Tilt/Turn\n" +
+                            "• <b>Shift / MMB:</b> Grip (Deadman Clutch)\n" +
+                            "• <b>Space / C:</b> Squeeze Trigger Gripper\n" +
+                            "• <b>Key 1 / 2:</b> Buttons A (Preset) / B (Ghost)", styleBodyText, GUILayout.Width(colW));
+
+            GUILayout.EndVertical();
+
+            GUILayout.EndHorizontal();
+        }
+
         private void DrawModernGuideTab(float totalW)
         {
             float colW = (totalW - 24f) / 2f;
 
             GUILayout.BeginHorizontal();
 
-            // Column 1: Digital Twin Architecture & ROS Command
+            // Column 1: Digital Twin Architecture & Quest 2 VR Controls
             GUILayout.BeginVertical(GUILayout.Width(colW));
+            DrawColumnHeader("Meta Quest 2 VR Controls");
+            DrawShortcutRow("Grip Trigger", "Hold to engage Gyroscopic Clutch (Deadman)");
+            DrawShortcutRow("Controller Gyro", "Yaw: Base Pan • Pitch: Shoulder/Elbow • Roll: Wrist");
+            DrawShortcutRow("Index Trigger", "Analog Gripper Clamp (squeeze to pinch)");
+            DrawShortcutRow("Button A (X)", "Tap: Next Preset • Hold: Return to Home");
+            DrawShortcutRow("Button B (Y)", "Tap: Toggle Ghost Arm • Double-Tap: ROS Stream");
+            DrawShortcutRow("Thumbstick", "Trim Base Azimuth & Reach • Click: Re-zero Gyro");
+            DrawShortcutRow("Menu Button", "Emergency Hold / Safe Stop");
+
+            GUILayout.Space(12);
             DrawColumnHeader("Digital Twin Flow");
-            GUILayout.Label("• <b>Cyan Ghost:</b> Commanded target pose set by user sliders or trajectory planner.\n\n" +
+            GUILayout.Label("• <b>Cyan Ghost:</b> Commanded target pose set by Quest 2, sliders or trajectory planner.\n\n" +
                             "• <b>Solid Arm:</b> Physical twin driven strictly by hardware optical encoders at real motor velocity.", styleBodyText, GUILayout.Width(colW));
 
-            GUILayout.Space(14);
+            GUILayout.Space(12);
             DrawColumnHeader("Remote ROS 2 Driver");
             GUILayout.Label("Run on Linux PC / Robot host:", styleSubtext);
             GUILayout.Space(4);
@@ -1252,7 +1442,6 @@ namespace RoboArm
             DrawShortcutRow("Space", "Play / Pause Waypoint Demo");
             DrawShortcutRow("F10", "Toggle RTX Graphics Quality");
             DrawShortcutRow("Esc", "Close / Exit Game Application");
-            DrawShortcutRow("✕ Exit", "Top-Right Game Exit Button");
             GUILayout.EndVertical();
 
             GUILayout.EndHorizontal();
